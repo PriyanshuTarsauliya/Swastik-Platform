@@ -344,7 +344,7 @@ const haloGoldTex = createSoftHaloTexture(THEMES.gold.glowRgb);
 
 // ── Fluid Orb Subsystem (Silky Wave Folds from Image 2 & /orb) ──
 class FluidOrbEntity {
-  constructor(type, xPos, radius = 2.3) {
+  constructor(type, xPos, radius = 2.7) {
     this.type = type;
     this.baseRadius = radius;
     this.currentPos = new THREE.Vector3(xPos, 0, 0);
@@ -387,7 +387,7 @@ class FluidOrbEntity {
     this.waveGeo.setAttribute("color", new THREE.BufferAttribute(wColors, 3));
 
     this.waveMat = new THREE.PointsMaterial({
-      size: 0.16,
+      size: 0.20,
       map: photonTex,
       vertexColors: true,
       transparent: true,
@@ -429,7 +429,7 @@ class FluidOrbEntity {
     this.shellGeo.setAttribute("color", new THREE.BufferAttribute(sColors, 3));
 
     this.shellMat = new THREE.PointsMaterial({
-      size: 0.18,
+      size: 0.22,
       map: photonTex,
       vertexColors: true,
       transparent: true,
@@ -615,26 +615,30 @@ class FluidOrbEntity {
 // Instantiate Dual Orbs
 // Left Orb = Gold Patient (Calling In)
 // Right Orb = Cyan Swastik AI (Answering)
-const patientSystem = new FluidOrbEntity("gold", -6.5, 2.3);
-const swastikSystem = new FluidOrbEntity("cyan", 6.5, 2.3);
+const patientSystem = new FluidOrbEntity("gold", -5.2, 2.7);
+const swastikSystem = new FluidOrbEntity("cyan", 4.8, 2.7);
 scene.add(patientSystem.group);
 scene.add(swastikSystem.group);
 
 // ------------------------------------------------------------------
-// Connecting Dotted Synaptic Bridge (Flowing between the two Orbs)
+// Connecting Luminous Synaptic Neural Beam (Flowing between the Orbs)
 // ------------------------------------------------------------------
-const BRIDGE_COUNT = 90;
+const BRIDGE_COUNT = 360;
 const bridgeGeo = new THREE.BufferGeometry();
 const bridgePositions = new Float32Array(BRIDGE_COUNT * 3);
 const bridgeColors = new Float32Array(BRIDGE_COUNT * 3);
 const bridgeMeta = [];
 
 for (let i = 0; i < BRIDGE_COUNT; i++) {
+  const strandId = i % 3; // 3 intertwined helical strands
   bridgeMeta.push({
     progress: i / BRIDGE_COUNT,
-    speed: 0.0025 + Math.random() * 0.0045,
-    yJitter: (Math.random() - 0.5) * 0.35,
-    zJitter: (Math.random() - 0.5) * 0.35,
+    speed: 0.0028 + (i % 7) * 0.0008,
+    strandId,
+    phaseOffset: strandId * ((Math.PI * 2) / 3) + (i % 5) * 0.15,
+    helixRadius: 0.26 + (i % 4) * 0.12,
+    yJitter: (Math.random() - 0.5) * 0.22,
+    zJitter: (Math.random() - 0.5) * 0.22,
   });
   bridgePositions[i * 3] = 0;
   bridgePositions[i * 3 + 1] = 0;
@@ -647,7 +651,7 @@ bridgeGeo.setAttribute("position", new THREE.BufferAttribute(bridgePositions, 3)
 bridgeGeo.setAttribute("color", new THREE.BufferAttribute(bridgeColors, 3));
 
 const bridgeMat = new THREE.PointsMaterial({
-  size: 0.18,
+  size: 0.28,
   map: photonTex,
   vertexColors: true,
   transparent: true,
@@ -846,16 +850,16 @@ function resize() {
   if (isMobile) {
     leftTargetPos.set(0, visibleHeight * 0.18, 0);
     rightTargetPos.set(0, -visibleHeight * 0.14, 0);
-    patientSystem._baseGroupScale = 0.72;
-    swastikSystem._baseGroupScale = 0.72;
+    patientSystem._baseGroupScale = 0.75;
+    swastikSystem._baseGroupScale = 0.75;
   } else if (isTablet) {
-    leftTargetPos.set(-visibleWidth * 0.24, 0, 0);
-    rightTargetPos.set(visibleWidth * 0.24, 0, 0);
+    leftTargetPos.set(-visibleWidth * 0.20, 0, 0);
+    rightTargetPos.set(visibleWidth * 0.18, 0, 0);
     patientSystem._baseGroupScale = 0.88;
     swastikSystem._baseGroupScale = 0.88;
   } else {
-    leftTargetPos.set(-visibleWidth * 0.23, 0, 0);
-    rightTargetPos.set(visibleWidth * 0.23, 0, 0);
+    leftTargetPos.set(-visibleWidth * 0.19, 0, 0);
+    rightTargetPos.set(visibleWidth * 0.17, 0, 0);
     patientSystem._baseGroupScale = 1.0;
     swastikSystem._baseGroupScale = 1.0;
   }
@@ -1030,14 +1034,15 @@ function animate(time) {
     rightTargetPos.z
   );
 
-  // Update Connecting Dotted Synaptic Bridge
+  // Update Connecting Luminous Synaptic Neural Beam
   const p1 = patientSystem.group.position;
   const p2 = swastikSystem.group.position;
   const bPos = bridgeGeo.attributes.position.array;
   const bCol = bridgeGeo.attributes.color.array;
 
-  let flowDir = agentPulse > userPulse ? -1.0 : 1.0;
-  const bridgeSpeed = (userPulse > 0.05 || agentPulse > 0.05) ? 2.5 : 1.0;
+  const flowDir = agentPulse > userPulse ? -1.0 : 1.0;
+  const bridgeSpeed = (userPulse > 0.05 || agentPulse > 0.05) ? 3.0 : 1.2;
+  const waveTime = time * 0.0035;
 
   for (let i = 0; i < BRIDGE_COUNT; i++) {
     const pt = bridgeMeta[i];
@@ -1046,19 +1051,44 @@ function animate(time) {
     if (pt.progress < 0.0) pt.progress += 1.0;
 
     const t = pt.progress;
-    const arcHeight = Math.sin(t * Math.PI) * 0.6;
+    const taper = Math.sin(t * Math.PI);
+
+    // Helical vortex wave motion
+    const angle = t * Math.PI * 4 + waveTime * 4.0 + pt.phaseOffset;
+    const helixY = Math.sin(angle) * pt.helixRadius * taper;
+    const helixZ = Math.cos(angle) * pt.helixRadius * taper;
+    const archY = Math.sin(t * Math.PI) * 0.45;
+
     const baseX = p1.x + (p2.x - p1.x) * t;
-    const baseY = p1.y + (p2.y - p1.y) * t + arcHeight + pt.yJitter;
-    const baseZ = p1.z + (p2.z - p1.z) * t + pt.zJitter;
+    const baseY = p1.y + (p2.y - p1.y) * t + archY + helixY + pt.yJitter * taper;
+    const baseZ = p1.z + (p2.z - p1.z) * t + helixZ + pt.zJitter * taper;
 
     bPos[i * 3] = baseX;
     bPos[i * 3 + 1] = baseY;
     bPos[i * 3 + 2] = baseZ;
 
-    // Gradient: Gold at Patient (t=0) -> Cyan at Swastik (t=1)
-    bCol[i * 3] = THREE.MathUtils.lerp(1.0, 0.0, t);
-    bCol[i * 3 + 1] = THREE.MathUtils.lerp(0.62, 0.9, t);
-    bCol[i * 3 + 2] = THREE.MathUtils.lerp(0.0, 1.0, t);
+    // Luminous Energy Wave: traveling quantum brightness packets
+    const packet = Math.pow(Math.max(0, Math.sin((t * 2.5 - waveTime * 2.2) * Math.PI * 2)), 5) * 1.6;
+    const voiceIntensity = 1.0 + Math.max(userPulse, agentPulse) * 1.5 + packet;
+
+    // Dynamic Color Gradient: Gold (t=0) -> Emerald (t=0.5) -> Electric Cyan (t=1)
+    let cr, cg, cb;
+    if (t < 0.5) {
+      const u = t * 2.0;
+      cr = THREE.MathUtils.lerp(1.0, 0.08, u);
+      cg = THREE.MathUtils.lerp(0.68, 0.88, u);
+      cb = THREE.MathUtils.lerp(0.08, 0.75, u);
+    } else {
+      const u = (t - 0.5) * 2.0;
+      cr = THREE.MathUtils.lerp(0.08, 0.0, u);
+      cg = THREE.MathUtils.lerp(0.88, 0.92, u);
+      cb = THREE.MathUtils.lerp(0.75, 1.0, u);
+    }
+
+    const lum = Math.min(2.4, (0.4 + taper * 0.8) * voiceIntensity);
+    bCol[i * 3] = Math.min(1.0, cr * lum);
+    bCol[i * 3 + 1] = Math.min(1.0, cg * lum);
+    bCol[i * 3 + 2] = Math.min(1.0, cb * lum);
   }
   bridgeGeo.attributes.position.needsUpdate = true;
   bridgeGeo.attributes.color.needsUpdate = true;
