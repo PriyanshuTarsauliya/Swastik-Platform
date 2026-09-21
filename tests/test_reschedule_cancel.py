@@ -22,7 +22,9 @@ TEST_DB_PATH = _test_db.name
 _test_db.close()
 
 # Patch DB_PATH before importing tools
+import backend.database as database
 import backend.tools as tools
+database.DB_PATH = database.Path(TEST_DB_PATH)
 tools.DB_PATH = TEST_DB_PATH
 
 from backend.tools import (

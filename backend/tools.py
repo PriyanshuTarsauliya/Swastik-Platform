@@ -11,10 +11,9 @@ from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 
-log = logging.getLogger("swastik-agent")
+from backend.database import get_db, init_db as db_init, DB_PATH, DBIntegrityError
 
-# SQLite Database Setup
-DB_PATH = Path(os.environ.get("APPOINTMENTS_DB_PATH", Path(__file__).resolve().parent / "appointments.db"))
+log = logging.getLogger("swastik-agent")
 
 def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
     """Securely hash a password with PBKDF2-HMAC-SHA256 and unique salt."""
@@ -35,114 +34,13 @@ def verify_password(password: str, hashed: str, salt: str) -> bool:
 
 def init_db():
     """Ensure appointments, orders, call_logs, settings, users, and user_sessions tables exist."""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS appointments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                patient_name TEXT NOT NULL,
-                slot_time TEXT NOT NULL,
-                phone TEXT,
-                age TEXT,
-                gender TEXT,
-                category TEXT,
-                consultation_mode TEXT,
-                fee TEXT DEFAULT '₹499',
-                status TEXT DEFAULT 'CONFIRMED',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                order_id TEXT UNIQUE NOT NULL,
-                plan_id TEXT NOT NULL,
-                plan_name TEXT NOT NULL,
-                amount INTEGER NOT NULL,
-                doctor_name TEXT NOT NULL,
-                clinic_name TEXT NOT NULL,
-                phone TEXT NOT NULL,
-                email TEXT,
-                city TEXT,
-                status TEXT DEFAULT 'PENDING',
-                payment_method TEXT,
-                transaction_ref TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS call_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id TEXT UNIQUE NOT NULL,
-                caller_name TEXT DEFAULT 'Anonymous Caller',
-                phone TEXT,
-                duration_seconds INTEGER DEFAULT 0,
-                summary TEXT,
-                transcript_json TEXT,
-                chief_complaint TEXT DEFAULT '',
-                urgency_level TEXT DEFAULT 'Routine',
-                action_items TEXT DEFAULT '',
-                audio_url TEXT DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS settings (
-                key TEXT PRIMARY KEY,
-                value TEXT,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                salt TEXT NOT NULL,
-                role TEXT DEFAULT 'doctor',
-                clinic_name TEXT DEFAULT 'Dr. Sharma''s Clinic',
-                phone TEXT DEFAULT '',
-                avatar_url TEXT DEFAULT '',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS user_sessions (
-                token TEXT PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                expires_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-            )
-        """)
-        
-        # Migration: add columns to call_logs if upgrading existing database
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(call_logs)")
-        cols = {row[1] for row in cursor.fetchall()}
-        if "chief_complaint" not in cols:
-            conn.execute("ALTER TABLE call_logs ADD COLUMN chief_complaint TEXT DEFAULT ''")
-        if "urgency_level" not in cols:
-            conn.execute("ALTER TABLE call_logs ADD COLUMN urgency_level TEXT DEFAULT 'Routine'")
-        if "action_items" not in cols:
-            conn.execute("ALTER TABLE call_logs ADD COLUMN action_items TEXT DEFAULT ''")
-        if "audio_url" not in cols:
-            conn.execute("ALTER TABLE call_logs ADD COLUMN audio_url TEXT DEFAULT ''")
-
-        # Migration: add reschedule_count to appointments for reschedule limit tracking
-        cursor.execute("PRAGMA table_info(appointments)")
-        appt_cols = {row[1] for row in cursor.fetchall()}
-        if "reschedule_count" not in appt_cols:
-            conn.execute("ALTER TABLE appointments ADD COLUMN reschedule_count INTEGER DEFAULT 0")
-
-        conn.commit()
-
+    db_init()
     seed_default_user()
 
 def seed_default_user():
     """Seed the default demo doctor account if no users exist."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM users")
             count = cursor.fetchone()[0]
@@ -188,7 +86,7 @@ def create_user(
 
     pw_hash, salt = hash_password(password)
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         cursor = conn.cursor()
         try:
             cursor.execute("""
@@ -206,13 +104,13 @@ def create_user(
                 "phone": phone,
                 "avatar_url": avatar_url,
             }
-        except sqlite3.IntegrityError:
+        except DBIntegrityError:
             raise ValueError("An account with this email already exists")
 
 def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
     """Authenticate user credentials and return user profile if valid."""
     email_clean = email.strip().lower()
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("""
@@ -239,7 +137,7 @@ def create_session(user_id: int, days_valid: int = 30) -> str:
     """Create a new session token for the given user."""
     token = secrets.token_urlsafe(32)
     expires_at = (datetime.now(timezone.utc) + timedelta(days=days_valid)).isoformat()
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.execute(
             "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
             (token, user_id, expires_at)
@@ -251,7 +149,7 @@ def get_user_by_session_token(token: str) -> Optional[Dict[str, Any]]:
     """Retrieve user associated with session token if not expired."""
     if not token:
         return None
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("""
@@ -286,7 +184,7 @@ def delete_session(token: str) -> bool:
     """Delete session token to sign out user."""
     if not token:
         return False
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
         conn.commit()
@@ -297,7 +195,7 @@ init_db()
 def get_setting(key: str, default: str = "") -> str:
     """Retrieve configuration setting from SQLite."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
             row = cursor.fetchone()
@@ -309,7 +207,7 @@ def get_setting(key: str, default: str = "") -> str:
 def set_setting(key: str, value: str):
     """Save or update configuration setting in SQLite."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             conn.execute("""
                 INSERT INTO settings (key, value, updated_at)
                 VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -543,7 +441,7 @@ def save_call_log(
     """Save call transcript and metadata including clinical triage and audio memo to SQLite."""
     import json
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO call_logs (
                     session_id, caller_name, phone, duration_seconds, summary,
@@ -563,7 +461,7 @@ def get_all_call_logs(limit=50):
     """Fetch call logs with clinical triage data and audio playback for admin view."""
     import json
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM call_logs ORDER BY id DESC LIMIT ?", (limit,))
@@ -587,7 +485,7 @@ def get_all_call_logs(limit=50):
 def update_appointment_status(appointment_id: int, new_status: str):
     """Update appointment status (CONFIRMED, COMPLETED, CANCELLED)."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             conn.execute("""
                 UPDATE appointments SET status = ? WHERE id = ?
             """, (new_status, appointment_id))
@@ -606,7 +504,7 @@ def reschedule_appointment(phone: str, old_slot_time: str, new_slot_time: str) -
     - New slot must be available (not already booked by someone else).
     """
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
@@ -674,7 +572,7 @@ def cancel_appointment(phone: str, slot_time: str) -> dict:
     Policy: fee is non-refundable. Status changes to CANCELLED.
     """
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
@@ -717,7 +615,7 @@ def cancel_appointment(phone: str, slot_time: str) -> dict:
 def get_all_orders(limit=100):
     """Fetch all subscription orders."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))
@@ -729,7 +627,7 @@ def get_all_orders(limit=100):
 def get_admin_stats():
     """Aggregate high-level metrics for Dr. Sharma's admin dashboard."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM appointments")
             total_appts = cursor.fetchone()[0]
@@ -770,7 +668,7 @@ def create_order(plan_id: str, plan_name: str, amount: int, doctor_name: str, cl
     """Create a new subscription order in SQLite."""
     import uuid
     order_id = f"ORD-SWK-{uuid.uuid4().hex[:8].upper()}"
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.execute("""
             INSERT INTO orders (order_id, plan_id, plan_name, amount, doctor_name, clinic_name, phone, email, city, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
@@ -806,7 +704,7 @@ def create_order(plan_id: str, plan_name: str, amount: int, doctor_name: str, cl
 
 def verify_order_payment(order_id: str, transaction_ref: str, payment_method: str = "UPI"):
     """Update order status to PAID once payment is submitted/verified."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM orders WHERE order_id = ?", (order_id,))
@@ -827,7 +725,7 @@ def verify_order_payment(order_id: str, transaction_ref: str, payment_method: st
 
 def get_order_by_id(order_id: str):
     """Retrieve an order by its unique order_id."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM orders WHERE order_id = ?", (order_id,))
@@ -974,7 +872,7 @@ def export_appointments_csv() -> str:
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["ID", "Patient Name", "Slot Time", "Phone", "Age", "Gender", "Category", "Mode", "Fee", "Status", "Created At"])
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT id, patient_name, slot_time, phone, age, gender, category, consultation_mode, fee, status, created_at FROM appointments ORDER BY id DESC")
         for row in cursor.fetchall():
@@ -990,7 +888,7 @@ def export_call_logs_csv() -> str:
         "ID", "Session ID", "Caller Name", "Phone", "Duration (s)",
         "Chief Complaint", "Urgency Level", "Action Items", "Audio URL", "Summary", "Created At"
     ])
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT id, session_id, caller_name, phone, duration_seconds,
@@ -1012,7 +910,7 @@ BASE_SLOTS = [
 def get_current_slots():
     """Retrieve slot availability based on persistent SQLite database."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT LOWER(slot_time) FROM appointments WHERE status = 'CONFIRMED'")
             booked_times = {row[0] for row in cursor.fetchall()}
@@ -1033,7 +931,7 @@ def get_current_slots():
 def save_appointment(patient_name, slot_time, phone, age, gender, category, consultation_mode):
     """Save an appointment to SQLite."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO appointments (patient_name, slot_time, phone, age, gender, category, consultation_mode)
@@ -1048,7 +946,7 @@ def save_appointment(patient_name, slot_time, phone, age, gender, category, cons
 def get_all_appointments(limit=100):
     """Fetch appointments for admin view."""
     try:
-        with sqlite3.connect(DB_PATH) as conn:
+        with get_db() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM appointments ORDER BY id DESC LIMIT ?", (limit,))

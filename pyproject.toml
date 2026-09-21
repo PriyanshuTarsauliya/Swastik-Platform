@@ -13,6 +13,7 @@ dependencies = [
     "qrcode[pil]>=8.2",
     "pillow>=12.3.0",
     "python-multipart>=0.0.32",
+    "psycopg2-binary>=2.9.9",
 ]
 
 [tool.uv]
