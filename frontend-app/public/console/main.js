@@ -1310,7 +1310,7 @@ function playVoice(buf) {
 
   const now = audioCtx.currentTime;
   if (nextStart < now) {
-    nextStart = now + 0.15;
+    nextStart = now + 0.035;
   }
   src.start(nextStart);
   nextStart += ab.duration;

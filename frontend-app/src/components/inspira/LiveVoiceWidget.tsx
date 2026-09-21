@@ -122,7 +122,7 @@ export const LiveVoiceWidget: React.FC = () => {
     nextStartRef.current = 0
   }
 
-  // Play incoming 24kHz Int16 PCM audio chunk
+  // Play incoming 24kHz Int16 PCM audio chunk with optimized jitter buffer
   const playIncomingAudio = (buffer: ArrayBuffer) => {
     if (!audioCtxRef.current || !voiceGainRef.current) return
     const ctx = audioCtxRef.current
@@ -144,8 +144,9 @@ export const LiveVoiceWidget: React.FC = () => {
     source.connect(voiceGainRef.current)
 
     const now = ctx.currentTime
+    // Ultra-low latency jitter buffer: 35ms headroom instead of 120ms to eliminate stutter
     if (nextStartRef.current < now) {
-      nextStartRef.current = now + 0.12
+      nextStartRef.current = now + 0.035
     }
     source.start(nextStartRef.current)
     nextStartRef.current += audioBuffer.duration
@@ -267,9 +268,31 @@ export const LiveVoiceWidget: React.FC = () => {
         }
       }
 
-      // Stream mic PCM from worklet
+      // Stream mic PCM from worklet with acoustic echo gating
+      let speechFrameCount = 0
+      const BARGE_THRESHOLD = 0.065
+
       worklet.port.onmessage = (e) => {
-        if (socket.readyState === WebSocket.OPEN && e.data.pcm) {
+        if (socket.readyState !== WebSocket.OPEN || !e.data.pcm) return
+
+        const isAISpeaking = activeSourcesRef.current.length > 0
+        const rms = e.data.rms || 0
+
+        if (isAISpeaking) {
+          // AI is actively speaking: prevent speaker bleed from triggering self-interruption.
+          // Require deliberate caller speech (louder than speaker output) across consecutive frames.
+          if (rms >= BARGE_THRESHOLD) {
+            speechFrameCount++
+            if (speechFrameCount >= 2) {
+              stopIncomingAudio()
+              socket.send(e.data.pcm)
+            }
+          } else {
+            speechFrameCount = Math.max(0, speechFrameCount - 1)
+          }
+        } else {
+          // AI is listening: stream all mic audio cleanly without threshold
+          speechFrameCount = 0
           socket.send(e.data.pcm)
         }
       }
