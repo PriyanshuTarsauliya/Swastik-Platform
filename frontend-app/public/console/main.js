@@ -1410,29 +1410,65 @@ async function startMic() {
       echoCancellation: true,
       noiseSuppression: true,
       autoGainControl: true,
+      googEchoCancellation: true,
+      googAutoGainControl: true,
+      googNoiseSuppression: true,
+      googHighpassFilter: true,
     },
   });
   const source = audioCtx.createMediaStreamSource(micStream);
+
+  // Hardware-accelerated DSP Speech Filter Chain:
+  // 1. Highpass: Cuts low frequency fan rumble, room vibrations, breathing pops (<85Hz)
+  const highpass = audioCtx.createBiquadFilter();
+  highpass.type = "highpass";
+  highpass.frequency.setValueAtTime(85, audioCtx.currentTime);
+  highpass.Q.setValueAtTime(0.7, audioCtx.currentTime);
+
+  // 2. Lowpass: Cuts electrical hiss, coil whine, sharp clicks (>4000Hz)
+  const lowpass = audioCtx.createBiquadFilter();
+  lowpass.type = "lowpass";
+  lowpass.frequency.setValueAtTime(4000, audioCtx.currentTime);
+  lowpass.Q.setValueAtTime(0.7, audioCtx.currentTime);
+
+  // 3. Compressor: Keeps speech dynamic range balanced and squelches noise floor
+  const compressor = audioCtx.createDynamicsCompressor();
+  compressor.threshold.setValueAtTime(-45, audioCtx.currentTime);
+  compressor.knee.setValueAtTime(10, audioCtx.currentTime);
+  compressor.ratio.setValueAtTime(4, audioCtx.currentTime);
+  compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
+  compressor.release.setValueAtTime(0.15, audioCtx.currentTime);
+
+  source.connect(highpass);
+  highpass.connect(lowpass);
+  lowpass.connect(compressor);
+
   workletNode = new AudioWorkletNode(audioCtx, "pcm-processor");
 
   workletNode.port.onmessage = (e) => {
     userRMS = e.data.rms || 0;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(e.data.pcm);
-    }
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
-    if (userRMS >= BARGE_THRESHOLD) {
-      speechFrameCount++;
-      if (speechFrameCount >= 3 && speaking) {
-        stopVoice();
-        speechFrameCount = 0;
+    if (speaking) {
+      // Swastik is actively talking: suppress speaker echo to avoid cutting her off
+      if (userRMS >= BARGE_THRESHOLD) {
+        speechFrameCount++;
+        if (speechFrameCount >= 2) {
+          stopVoice();
+          speechFrameCount = 0;
+          ws.send(e.data.pcm);
+        }
+      } else {
+        speechFrameCount = Math.max(0, speechFrameCount - 1);
       }
     } else {
-      speechFrameCount = Math.max(0, speechFrameCount - 1);
+      // Swastik is listening: stream filtered audio cleanly
+      speechFrameCount = 0;
+      ws.send(e.data.pcm);
     }
   };
 
-  source.connect(workletNode);
+  compressor.connect(workletNode);
 
   silentSink = audioCtx.createGain();
   silentSink.gain.value = 0;

@@ -190,7 +190,11 @@ export const LiveVoiceWidget: React.FC = () => {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-        },
+          googEchoCancellation: true,
+          googAutoGainControl: true,
+          googNoiseSuppression: true,
+          googHighpassFilter: true,
+        } as any,
       })
       micStreamRef.current = stream
 
@@ -212,10 +216,36 @@ export const LiveVoiceWidget: React.FC = () => {
       gain.connect(ctx.destination)
       voiceGainRef.current = gain
 
+      // Hardware-accelerated DSP Speech Filter Chain:
+      // 1. Highpass: Cuts low frequency fan rumble, room vibrations, breathing pops (<85Hz)
+      const highpass = ctx.createBiquadFilter()
+      highpass.type = 'highpass'
+      highpass.frequency.setValueAtTime(85, ctx.currentTime)
+      highpass.Q.setValueAtTime(0.7, ctx.currentTime)
+
+      // 2. Lowpass: Cuts electrical hiss, coil whine, sharp clicks (>4000Hz)
+      const lowpass = ctx.createBiquadFilter()
+      lowpass.type = 'lowpass'
+      lowpass.frequency.setValueAtTime(4000, ctx.currentTime)
+      lowpass.Q.setValueAtTime(0.7, ctx.currentTime)
+
+      // 3. Compressor: Keeps speech dynamic range balanced and squelches noise floor
+      const compressor = ctx.createDynamicsCompressor()
+      compressor.threshold.setValueAtTime(-45, ctx.currentTime)
+      compressor.knee.setValueAtTime(10, ctx.currentTime)
+      compressor.ratio.setValueAtTime(4, ctx.currentTime)
+      compressor.attack.setValueAtTime(0.003, ctx.currentTime)
+      compressor.release.setValueAtTime(0.15, ctx.currentTime)
+
+      const source = ctx.createMediaStreamSource(stream)
+      source.connect(highpass)
+      highpass.connect(lowpass)
+      lowpass.connect(compressor)
+
       // Load Worklet
       await ctx.audioWorklet.addModule('/pcm-processor.js')
-      const source = ctx.createMediaStreamSource(stream)
       const worklet = new AudioWorkletNode(ctx, 'pcm-processor')
+      compressor.connect(worklet)
 
       // Connect WebSocket
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -297,7 +327,6 @@ export const LiveVoiceWidget: React.FC = () => {
         }
       }
 
-      source.connect(worklet)
       const silentSink = ctx.createGain()
       silentSink.gain.value = 0
       silentSink.connect(ctx.destination)

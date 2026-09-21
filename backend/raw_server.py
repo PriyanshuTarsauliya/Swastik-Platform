@@ -663,23 +663,17 @@ async def ws(websocket: WebSocket):
                     await session.send_tool_response(function_responses=results)
 
             async def downstream():
-                empty = 0
                 while True:
-                    got = 0
                     try:
                         async for response in session.receive():
-                            got += 1
                             await handle(response)
+                    except asyncio.CancelledError:
+                        return
                     except Exception:
                         log.exception("downstream: receive() raised — ending")
                         return
-                    if got == 0:
-                        empty += 1
-                        if empty >= 2:
-                            log.info("downstream: receive() empty %dx — session closed, ending", empty)
-                            return
-                    else:
-                        empty = 0
+                    # Short pause between turns so CPU doesn't spin
+                    await asyncio.sleep(0.01)
 
             up = asyncio.create_task(upstream(), name="upstream")
             down = asyncio.create_task(downstream(), name="downstream")
