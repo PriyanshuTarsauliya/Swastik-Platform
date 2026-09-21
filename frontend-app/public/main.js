@@ -106,6 +106,17 @@ function setStage(stageName) {
   if (stageBadgeText) {
     stageBadgeText.textContent = stageName.toUpperCase();
   }
+  const calBadge = document.getElementById("calLiveBadge");
+  if (calBadge) {
+    const isCalActive = stageName.includes("CALENDAR") || stageName.includes("SLOT");
+    if (isCalActive) {
+      calBadge.classList.add("is-writing");
+      calBadge.textContent = "● " + (stageName.includes("WRITTEN") ? "WRITTEN" : "SYNCING");
+    } else {
+      calBadge.classList.remove("is-writing");
+      calBadge.textContent = "● LIVE SYNC";
+    }
+  }
 }
 
 function setSubtitles(role, text) {
