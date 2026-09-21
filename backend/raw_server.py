@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, UploadFile, File
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Response
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Response, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -814,10 +814,14 @@ if FRONTEND_DIST.exists():
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
+        if full_path in ("console", "console/"):
+            return RedirectResponse(url="/console/", status_code=307)
         # 1. Exact file match in dist (e.g. pcm-processor.js, favicon.svg, swastik-logo.png)
         target = FRONTEND_DIST / full_path
         if target.is_file():
             return FileResponse(target)
+        if target.is_dir() and (target / "index.html").is_file():
+            return RedirectResponse(url=f"/{full_path}/", status_code=307)
         # 2. SPA fallback for client-side routes (/admin, /dashboard, /checkout, /buy, etc.)
         index_path = FRONTEND_DIST / "index.html"
         if index_path.exists():
