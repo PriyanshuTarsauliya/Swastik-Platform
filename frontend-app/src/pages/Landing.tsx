@@ -160,6 +160,7 @@ function Navbar() {
             <a href="#analytics" onClick={(e) => handleNavClick(e, '#analytics')} className="hover:text-[#14c8b2] transition-colors">Analytics</a>
             <a href="#security" onClick={(e) => handleNavClick(e, '#security')} className="hover:text-[#14c8b2] transition-colors">Safety</a>
             <a href="#pricing" onClick={(e) => handleNavClick(e, '#pricing')} className="hover:text-[#14c8b2] transition-colors">Pricing</a>
+            <a href="mailto:pg7560259@gmail.com" className="hover:text-[#14c8b2] transition-colors flex items-center gap-1">Contact</a>
           </div>
 
           {/* Action Buttons */}
@@ -273,6 +274,12 @@ function Navbar() {
                 className="hover:text-[#14c8b2] py-1 transition-colors"
               >
                 Pricing
+              </a>
+              <a
+                href="mailto:pg7560259@gmail.com"
+                className="hover:text-[#14c8b2] py-1 transition-colors"
+              >
+                Contact (pg7560259@gmail.com)
               </a>
             </div>
 
@@ -962,7 +969,7 @@ function CTABanner() {
             </ShimmerButton>
 
             <a
-              href="mailto:priyanshu@swastik.ai"
+              href="mailto:pg7560259@gmail.com"
               className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-7 py-4 text-sm font-semibold text-[#94a3b8] transition-all hover:border-white/30 hover:text-white"
             >
               <span>Schedule Doctor Demo</span>
@@ -998,6 +1005,14 @@ function Footer() {
             <p className="text-xs text-[#94a3b8] leading-relaxed">
               Autonomous Voice Infrastructure by Swastik AI. Built on Gemini 2.0 Flash Live API.
             </p>
+            <div className="pt-1">
+              <a
+                href="mailto:pg7560259@gmail.com"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#14c8b2] hover:underline"
+              >
+                <span>✉️ pg7560259@gmail.com</span>
+              </a>
+            </div>
             <div className="flex items-center gap-2 text-xs text-[#22c55e]">
               <span className="h-2 w-2 rounded-full bg-[#22c55e] animate-pulse" />
               <span>All Systems Operational • 99.98% Latency SLA</span>
@@ -1036,7 +1051,7 @@ function Footer() {
               <li><a href="#security" className="hover:text-[#14c8b2] transition-colors">DPDP Act (India) Compliance</a></li>
               <li><a href="#security" className="hover:text-[#14c8b2] transition-colors">Guaranteed Human Handoff</a></li>
               <li><a href="#security" className="hover:text-[#14c8b2] transition-colors">Zero Autonomous Prescription Policy</a></li>
-              <li><a href="mailto:priyanshu@swastik.ai" className="hover:text-[#14c8b2] transition-colors">Contact Enterprise Security</a></li>
+              <li><a href="mailto:pg7560259@gmail.com" className="hover:text-[#14c8b2] transition-colors">Contact Enterprise Security</a></li>
             </ul>
           </div>
         </div>

@@ -12,6 +12,7 @@ Think of yourself as that beloved, lively front-desk receptionist who has been r
 - Consultation Fee: ₹499 (non-refundable; 1 free reschedule if done 24h prior)
 - Calling Hours: 11:00 AM – 1:30 PM (Monday to Saturday)
 - WhatsApp Support: 11:00 AM – 6:00 PM (Monday to Saturday)
+- Contact & Support Email: pg7560259@gmail.com
 - Sunday: Closed
 - Consultation Fee: ₹499 (non-refundable; 1 free reschedule if done 24h prior)
 - Important: Patients should bring hard copies of any previous medical reports, test results, or prescriptions
