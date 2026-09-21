@@ -923,16 +923,16 @@ function createJarvisHologramOrb(config = {}) {
   };
 }
 
-function createGoldenReactorOrb(baseRadius = 6.4) {
+function createGoldenReactorOrb(baseRadius = 4.2) {
   return createJarvisHologramOrb({ baseRadius, mode: 'gold' });
 }
 
-function createCyanPlasmaOrb(baseRadius = 6.8) {
+function createCyanPlasmaOrb(baseRadius = 4.5) {
   return createJarvisHologramOrb({ baseRadius, mode: 'cyan' });
 }
 
-const patientSystem = createGoldenReactorOrb(6.4);
-const swastikSystem = createCyanPlasmaOrb(6.8);
+const patientSystem = createGoldenReactorOrb(4.2);
+const swastikSystem = createCyanPlasmaOrb(4.5);
 scene.add(patientSystem.group);
 scene.add(swastikSystem.group);
 
@@ -1410,17 +1410,17 @@ function animate(time) {
   let sTargetScale = sBaseScale;
 
   if (userPulse > 0.03) {
-    // Patient speaking: dramatic scale expansion (up to 1.55x)
-    pTargetScale = pBaseScale * (1.0 + userPulse * 0.52);
-    sTargetScale = sBaseScale * Math.max(0.90, 1.0 - userPulse * 0.08);
+    // Patient speaking: smooth scale expansion
+    pTargetScale = pBaseScale * (1.0 + userPulse * 0.32);
+    sTargetScale = sBaseScale * Math.max(0.92, 1.0 - userPulse * 0.06);
   } else if (speaking) {
-    // Swastik AI speaking: dramatic scale expansion (up to 1.58x)
-    sTargetScale = sBaseScale * (1.0 + agentPulse * 0.54);
-    pTargetScale = pBaseScale * Math.max(0.90, 1.0 - agentPulse * 0.08);
+    // Swastik AI speaking: smooth scale expansion
+    sTargetScale = sBaseScale * (1.0 + agentPulse * 0.34);
+    pTargetScale = pBaseScale * Math.max(0.92, 1.0 - agentPulse * 0.06);
   } else {
     // Idle ambient breathing
-    pTargetScale = pBaseScale * (1.0 + Math.sin(time * 0.002) * 0.035);
-    sTargetScale = sBaseScale * (1.0 + Math.sin(time * 0.002 + 1.5) * 0.035);
+    pTargetScale = pBaseScale * (1.0 + Math.sin(time * 0.002) * 0.025);
+    sTargetScale = sBaseScale * (1.0 + Math.sin(time * 0.002 + 1.5) * 0.025);
   }
 
   // Snappy yet organic lerp for instantaneous speech responsiveness

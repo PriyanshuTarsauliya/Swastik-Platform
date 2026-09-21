@@ -186,8 +186,8 @@ let isMobile = false;
 let isTablet = false;
 
 // Backward-compatible coordinate state for UI tracking
-let leftOrb = { x: 0, y: 0, baseRadius: 3.5, radius: 3.5, shockwaves: [] };
-let rightOrb = { x: 0, y: 0, baseRadius: 3.5, radius: 3.5, shockwaves: [] };
+let leftOrb = { x: 0, y: 0, baseRadius: 2.3, radius: 2.3, shockwaves: [] };
+let rightOrb = { x: 0, y: 0, baseRadius: 2.3, radius: 2.3, shockwaves: [] };
 
 // 3D Scene, Camera & WebGL Renderer
 const scene = new THREE.Scene();
@@ -344,7 +344,7 @@ const haloGoldTex = createSoftHaloTexture(THEMES.gold.glowRgb);
 
 // ── Fluid Orb Subsystem (Silky Wave Folds from Image 2 & /orb) ──
 class FluidOrbEntity {
-  constructor(type, xPos, radius = 3.5) {
+  constructor(type, xPos, radius = 2.3) {
     this.type = type;
     this.baseRadius = radius;
     this.currentPos = new THREE.Vector3(xPos, 0, 0);
@@ -459,7 +459,7 @@ class FluidOrbEntity {
       depthWrite: false,
     });
     this.starSprite = new THREE.Sprite(starMat);
-    this.starSprite.scale.set(radius * 2.2, radius * 2.2, 1);
+    this.starSprite.scale.set(radius * 2.0, radius * 2.0, 1);
     this.group.add(this.starSprite);
 
     const flareMat = new THREE.SpriteMaterial({
@@ -470,7 +470,7 @@ class FluidOrbEntity {
       depthWrite: false,
     });
     this.flareSprite = new THREE.Sprite(flareMat);
-    this.flareSprite.scale.set(radius * 3.6, radius * 0.9, 1);
+    this.flareSprite.scale.set(radius * 3.2, radius * 0.8, 1);
     this.group.add(this.flareSprite);
 
     const haloMat = new THREE.SpriteMaterial({
@@ -481,11 +481,11 @@ class FluidOrbEntity {
       depthWrite: false,
     });
     this.haloSprite = new THREE.Sprite(haloMat);
-    this.haloSprite.scale.set(radius * 3.4, radius * 3.4, 1);
+    this.haloSprite.scale.set(radius * 3.0, radius * 3.0, 1);
     this.group.add(this.haloSprite);
 
     // 4. Flat Concentric Orbital Rings (Stationary facing camera)
-    const ringRadii = [radius * 1.28, radius * 1.62, radius * 2.05];
+    const ringRadii = [radius * 1.25, radius * 1.55, radius * 1.88];
     const ringOpacities = [0.28, 0.16, 0.08];
     this.ringMeshes = [];
 
@@ -578,22 +578,22 @@ class FluidOrbEntity {
     this.shellGeo.attributes.color.needsUpdate = true;
 
     // 3. Central Core, Starburst, Flare & Halo
-    const coreScale = this.baseRadius * 1.5 * (1.0 + p * 0.42);
+    const coreScale = this.baseRadius * 1.5 * (1.0 + p * 0.35);
     this.coreSprite.scale.set(coreScale, coreScale, 1);
 
-    const starScale = this.baseRadius * 2.2 * (1.0 + p * 0.48);
+    const starScale = this.baseRadius * 2.0 * (1.0 + p * 0.38);
     this.starSprite.scale.set(starScale, starScale, 1);
     this.starSprite.material.opacity = 0.75 + p * 0.25;
 
-    const flareW = this.baseRadius * 3.6 * (1.0 + p * 0.38);
-    const flareH = this.baseRadius * 0.9 * (1.0 + p * 0.28);
+    const flareW = this.baseRadius * 3.2 * (1.0 + p * 0.30);
+    const flareH = this.baseRadius * 0.8 * (1.0 + p * 0.22);
     this.flareSprite.scale.set(flareW, flareH, 1);
     this.flareSprite.material.opacity = 0.40 + p * 0.30;
 
-    const haloScale = this.baseRadius * 3.4 * (1.0 + p * 0.20 + Math.sin(time * 1.1) * 0.02);
+    const haloScale = this.baseRadius * 3.0 * (1.0 + p * 0.18 + Math.sin(time * 1.1) * 0.02);
     this.haloSprite.scale.set(haloScale, haloScale, 1);
 
-    const ringMulti = 1.0 + p * 0.10;
+    const ringMulti = 1.0 + p * 0.08;
     this.ringMeshes.forEach((rLine, rIdx) => {
       rLine.scale.setScalar(ringMulti);
       rLine.material.opacity = (rIdx === 0 ? 0.28 : rIdx === 1 ? 0.16 : 0.08) + p * 0.22;
@@ -615,8 +615,8 @@ class FluidOrbEntity {
 // Instantiate Dual Orbs
 // Left Orb = Gold Patient (Calling In)
 // Right Orb = Cyan Swastik AI (Answering)
-const patientSystem = new FluidOrbEntity("gold", -6.5, 3.4);
-const swastikSystem = new FluidOrbEntity("cyan", 6.5, 3.4);
+const patientSystem = new FluidOrbEntity("gold", -6.5, 2.3);
+const swastikSystem = new FluidOrbEntity("cyan", 6.5, 2.3);
 scene.add(patientSystem.group);
 scene.add(swastikSystem.group);
 
@@ -690,7 +690,7 @@ function triggerShockwave(targetOrb) {
   const targetGroup = isPatient ? patientSystem.group : swastikSystem.group;
   const color = isPatient ? 0xFF9E00 : 0x00E5FF;
 
-  const ringGeo = new THREE.RingGeometry(3.5, 3.65, 64);
+  const ringGeo = new THREE.RingGeometry(2.35, 2.48, 64);
   const ringMat = new THREE.MeshBasicMaterial({
     color: color,
     side: THREE.DoubleSide,
@@ -993,15 +993,15 @@ function animate(time) {
   let sTargetScale = sBaseScale;
 
   if (userPulse > 0.05) {
-    pTargetScale = pBaseScale * (1.0 + userPulse * 0.38);
+    pTargetScale = pBaseScale * (1.0 + userPulse * 0.28);
     sTargetScale = sBaseScale * Math.max(0.92, 1.0 - userPulse * 0.06);
   } else if (agentPulse > 0.05) {
-    sTargetScale = sBaseScale * (1.0 + agentPulse * 0.40);
+    sTargetScale = sBaseScale * (1.0 + agentPulse * 0.30);
     pTargetScale = pBaseScale * Math.max(0.92, 1.0 - agentPulse * 0.06);
   } else {
     // Ambient breathing
-    pTargetScale = pBaseScale * (1.0 + Math.sin(time * 0.002) * 0.025);
-    sTargetScale = sBaseScale * (1.0 + Math.sin(time * 0.002 + 1.5) * 0.025);
+    pTargetScale = pBaseScale * (1.0 + Math.sin(time * 0.002) * 0.02);
+    sTargetScale = sBaseScale * (1.0 + Math.sin(time * 0.002 + 1.5) * 0.02);
   }
 
   const pCurScale = patientSystem.group.scale.x;
