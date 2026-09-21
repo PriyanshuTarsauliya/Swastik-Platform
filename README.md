@@ -1,6 +1,6 @@
 # Swastik AI Voice Agent
 
-Talk to **Swastik**, the warm AI voice receptionist for Dr. Gunja Gupta's Homeopathy Clinic. Ask her to book an appointment, inquire about clinic policies, or discuss health issues. Talk over her mid-sentence and she stops, listens, and picks the thread back up.
+Talk to **Swastik**, the warm AI voice receptionist for Dr. Sharma's Clinic. Ask her to book an appointment, inquire about clinic policies, or discuss health issues. Talk over her mid-sentence and she stops, listens, and picks the thread back up.
 
 Built on the **Gemini Live API** with the raw `google-genai` SDK — featuring a highly interactive, cinematic UI built in native HTML5 Canvas and JavaScript.
 
@@ -40,4 +40,4 @@ uv run uvicorn backend.raw_server:app --port 8000
 ```
 4. Open [http://localhost:8000](http://localhost:8000), **put headphones on** (otherwise she hears her own audio), tap **Start Call** and talk!
 
-Try asking: *"I'm having terrible hair fall, can I meet Dr. Gunja?"* · *"What is the consultation fee?"* · *"I want to book an online appointment for tomorrow."*
+Try asking: *"I'm having terrible hair fall, can I meet Dr. Sharma?"* · *"What is the consultation fee?"* · *"I want to book an online appointment for tomorrow."*

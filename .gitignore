@@ -3,8 +3,23 @@ __pycache__/
 *.pyc
 .venv/
 node_modules/
+dist/
+*.db
 .next/
 .DS_Store
 /inspira-ui/
 /lenis/
 /icons/
+
+# Large media files
+*.mp4
+
+# Agent workspace
+.agents/
+
+# Scratch files
+scratch/
+
+# IDE
+.idea/
+.vscode/

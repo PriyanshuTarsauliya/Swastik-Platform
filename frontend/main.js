@@ -1,4 +1,4 @@
-// Dr. Gunja Gupta — Hyper-Futuristic AI Voice Receptionist Engine
+// Dr. Sharma Clinic — Hyper-Futuristic AI Voice Receptionist Engine
 // Enhanced Edition: Shockwaves, Lightning, Particles, Chimes & Thinking
 
 const $ = (id) => document.getElementById(id);
@@ -144,19 +144,32 @@ renderer.setSize(width, height);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.25;
 
-// Procedural Dot and Glow Sprite Textures (Generated via Offscreen 2D Canvas)
+// Procedural Luminous Particle & Glow Sprite Textures (Generated via Offscreen 2D Canvas)
 function createDotTexture() {
   const c = document.createElement("canvas");
-  c.width = 64;
-  c.height = 64;
+  c.width = 128;
+  c.height = 128;
   const cctx = c.getContext("2d");
-  const g = cctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, "rgba(255, 255, 255, 1.0)");
-  g.addColorStop(0.3, "rgba(255, 255, 255, 0.9)");
-  g.addColorStop(0.65, "rgba(255, 255, 255, 0.25)");
-  g.addColorStop(1, "rgba(255, 255, 255, 0.0)");
-  cctx.fillStyle = g;
-  cctx.fillRect(0, 0, 64, 64);
+
+  // Outer soft atmospheric bloom
+  const g2 = cctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g2.addColorStop(0, "rgba(255, 255, 255, 1.0)");
+  g2.addColorStop(0.15, "rgba(255, 255, 255, 0.95)");
+  g2.addColorStop(0.35, "rgba(220, 250, 255, 0.75)");
+  g2.addColorStop(0.6, "rgba(20, 200, 178, 0.35)");
+  g2.addColorStop(0.85, "rgba(0, 229, 255, 0.12)");
+  g2.addColorStop(1.0, "rgba(0, 0, 0, 0)");
+  cctx.fillStyle = g2;
+  cctx.fillRect(0, 0, 128, 128);
+
+  // Intense central hot photon core
+  const g1 = cctx.createRadialGradient(64, 64, 0, 64, 64, 24);
+  g1.addColorStop(0, "rgba(255, 255, 255, 1.0)");
+  g1.addColorStop(0.5, "rgba(255, 255, 255, 0.95)");
+  g1.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
+  cctx.fillStyle = g1;
+  cctx.fillRect(0, 0, 128, 128);
+
   const tex = new THREE.CanvasTexture(c);
   tex.needsUpdate = true;
   return tex;
@@ -190,6 +203,78 @@ const dotTexture = createDotTexture();
 const glowTexturePatient = createGlowTexture(true);
 const glowTextureSwastik = createGlowTexture(false);
 
+// Procedural Ethereal Air Particle Texture (High-visibility incandescent motes)
+function createAirParticleTexture() {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 128;
+  const cctx = c.getContext("2d");
+
+  // Layer 1: Soft outer atmospheric bloom for visibility
+  const g2 = cctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g2.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
+  g2.addColorStop(0.10, "rgba(255, 255, 255, 0.98)");
+  g2.addColorStop(0.25, "rgba(255, 255, 255, 0.85)");
+  g2.addColorStop(0.45, "rgba(255, 255, 255, 0.50)");
+  g2.addColorStop(0.65, "rgba(255, 255, 255, 0.22)");
+  g2.addColorStop(0.85, "rgba(255, 255, 255, 0.06)");
+  g2.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
+  cctx.fillStyle = g2;
+  cctx.fillRect(0, 0, 128, 128);
+
+  // Layer 2: Hot photon core for crisp visibility
+  const g1 = cctx.createRadialGradient(64, 64, 0, 64, 64, 18);
+  g1.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
+  g1.addColorStop(0.6, "rgba(255, 255, 255, 0.9)");
+  g1.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
+  cctx.fillStyle = g1;
+  cctx.fillRect(0, 0, 128, 128);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+const airParticleTexture = createAirParticleTexture();
+
+// Ultra-fine dust mote texture (tiny, crisp, high-count inner nebula)
+function createFineParticleTexture() {
+  const c = document.createElement("canvas");
+  c.width = 32;
+  c.height = 32;
+  const cctx = c.getContext("2d");
+  const g = cctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
+  g.addColorStop(0.2, "rgba(255, 255, 255, 0.88)");
+  g.addColorStop(0.5, "rgba(255, 255, 255, 0.35)");
+  g.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
+  cctx.fillStyle = g;
+  cctx.fillRect(0, 0, 32, 32);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+const fineParticleTexture = createFineParticleTexture();
+
+// Ethereal haze texture (large, soft, diffused atmospheric fog particles)
+function createHazeTexture() {
+  const c = document.createElement("canvas");
+  c.width = 128;
+  c.height = 128;
+  const cctx = c.getContext("2d");
+  const g = cctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0.0, "rgba(255, 255, 255, 0.55)");
+  g.addColorStop(0.15, "rgba(255, 255, 255, 0.40)");
+  g.addColorStop(0.35, "rgba(255, 255, 255, 0.22)");
+  g.addColorStop(0.6, "rgba(255, 255, 255, 0.08)");
+  g.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
+  cctx.fillStyle = g;
+  cctx.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+const hazeTexture = createHazeTexture();
+
 // Helper: Generate circle points
 function createCirclePoints(radius, segments) {
   const pts = [];
@@ -201,303 +286,692 @@ function createCirclePoints(radius, segments) {
 }
 
 // ------------------------------------------------------------------
-// GLSL Shaders: Radiant Light Core (Exact Match to voice agent.mp4)
-// Pure #FFFFFF Light Core radiating into Amber / Cyan with Fresnel rim
+// High-Fidelity Custom Textures for Sci-Fi Reactors & Volumetric Plasma
 // ------------------------------------------------------------------
-const sphereVertexShader = `
+
+// Golden Thermonuclear Fusion Core Texture (Image 1)
+function createGoldenCoreTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const cctx = c.getContext("2d");
+
+  // Multi-tier radial gradient: pure white center -> hot golden amber -> deep solar flare
+  const g = cctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0.00, "rgba(255, 255, 255, 1.0)");
+  g.addColorStop(0.12, "rgba(255, 250, 220, 0.98)");
+  g.addColorStop(0.28, "rgba(255, 195, 45, 0.85)");
+  g.addColorStop(0.50, "rgba(255, 125, 15, 0.55)");
+  g.addColorStop(0.75, "rgba(215, 65, 0, 0.20)");
+  g.addColorStop(1.00, "rgba(0, 0, 0, 0.0)");
+  cctx.fillStyle = g;
+  cctx.fillRect(0, 0, 256, 256);
+
+  // Intense white-hot central photon starburst
+  const gCore = cctx.createRadialGradient(128, 128, 0, 128, 128, 48);
+  gCore.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
+  gCore.addColorStop(0.6, "rgba(255, 255, 240, 0.95)");
+  gCore.addColorStop(1.0, "rgba(255, 220, 120, 0.0)");
+  cctx.fillStyle = gCore;
+  cctx.fillRect(0, 0, 256, 256);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// Wide Soft Amber Atmospheric Bloom Texture
+function createGoldenGlowTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const cctx = c.getContext("2d");
+  const g = cctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0.00, "rgba(255, 245, 210, 0.95)");
+  g.addColorStop(0.20, "rgba(245, 166, 35, 0.65)");
+  g.addColorStop(0.48, "rgba(217, 119, 6, 0.25)");
+  g.addColorStop(0.78, "rgba(180, 83, 9, 0.08)");
+  g.addColorStop(1.00, "rgba(0, 0, 0, 0.0)");
+  cctx.fillStyle = g;
+  cctx.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// Electric Cyan Plasma Core Texture (Image 2)
+function createCyanCoreTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const cctx = c.getContext("2d");
+
+  // Pure white core radiating into electric cyan, neon teal, deep sapphire
+  const g = cctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0.00, "rgba(255, 255, 255, 1.0)");
+  g.addColorStop(0.12, "rgba(230, 255, 255, 0.98)");
+  g.addColorStop(0.30, "rgba(0, 245, 255, 0.88)");
+  g.addColorStop(0.55, "rgba(0, 160, 255, 0.50)");
+  g.addColorStop(0.80, "rgba(2, 65, 195, 0.18)");
+  g.addColorStop(1.00, "rgba(0, 0, 0, 0.0)");
+  cctx.fillStyle = g;
+  cctx.fillRect(0, 0, 256, 256);
+
+  const gCore = cctx.createRadialGradient(128, 128, 0, 128, 128, 48);
+  gCore.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
+  gCore.addColorStop(0.6, "rgba(240, 255, 255, 0.95)");
+  gCore.addColorStop(1.0, "rgba(140, 255, 255, 0.0)");
+  cctx.fillStyle = gCore;
+  cctx.fillRect(0, 0, 256, 256);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// Wide Soft Electric Cyan/Cobalt Bloom Texture
+function createCyanGlowTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const cctx = c.getContext("2d");
+  const g = cctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  g.addColorStop(0.00, "rgba(220, 255, 255, 0.95)");
+  g.addColorStop(0.20, "rgba(0, 229, 255, 0.65)");
+  g.addColorStop(0.48, "rgba(14, 165, 233, 0.25)");
+  g.addColorStop(0.78, "rgba(2, 132, 199, 0.08)");
+  g.addColorStop(1.00, "rgba(0, 0, 0, 0.0)");
+  cctx.fillStyle = g;
+  cctx.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+const goldenCoreTexture = createGoldenCoreTexture();
+const goldenGlowTexture = createGoldenGlowTexture();
+const cyanCoreTexture = createCyanCoreTexture();
+const cyanGlowTexture = createCyanGlowTexture();
+
+// ------------------------------------------------------------------
+// GLSL Shaders: Tony Stark JARVIS 3D Holographic Sphere
+// (Directly modeled from Video Project 2.mp4 & Image 1 / Image 2)
+// ------------------------------------------------------------------
+
+// Faint Planetary Glass Boundary Vertex Shader
+const goldenOuterRimVertexShader = `
   varying vec3 vNormal;
   varying vec3 vViewPosition;
-  varying vec3 vWorldPosition;
 
   void main() {
     vNormal = normalize(normalMatrix * normal);
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
     vViewPosition = -mvPosition.xyz;
-    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
 
-const patientFragmentShader = `
+// High-Definition Holographic 3D Globe Grid Vertex Shader
+const jarvisHologramVertexShader = `
   uniform float uTime;
   uniform float uPulse;
-  uniform vec2 uMouse;
+  varying vec3 vWorldPosition;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
+  varying vec2 vUv;
+  varying float vDisplacement;
+
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    
+    // Subtle acoustic surface undulation on voice/speech
+    float wave = sin(position.x * 2.5 + uTime * 3.0) * cos(position.y * 2.5 + uTime * 2.5);
+    float disp = wave * (0.04 + uPulse * 0.22);
+    vDisplacement = disp;
+    vec3 displacedPos = position + normal * disp;
+
+    vec4 worldPos = modelMatrix * vec4(displacedPos, 1.0);
+    vWorldPosition = worldPos.xyz;
+    vec4 mvPosition = modelViewMatrix * vec4(displacedPos, 1.0);
+    vViewPosition = -mvPosition.xyz;
+    gl_Position = projectionMatrix * mvPosition;
+  }
+`;
+
+// High-Definition Holographic 3D Globe Grid Fragment Shader
+// Renders procedural latitude & longitude grid lines with mathematical anti-aliasing,
+// Fresnel rim luminescence, holographic scanlines, and quantum shimmer!
+const jarvisHologramFragShader = `
+  uniform float uTime;
+  uniform float uPulse;
+  uniform vec3 uBaseColor;
+  uniform vec3 uGlowColor;
+  uniform vec3 uGridColor;
   varying vec3 vWorldPosition;
+  varying vec3 vNormal;
+  varying vec3 vViewPosition;
+  varying vec2 vUv;
+  varying float vDisplacement;
 
   void main() {
     vec3 normal = normalize(vNormal);
     vec3 viewDir = normalize(vViewPosition);
+    float NdotV = max(dot(normal, viewDir), 0.0);
+    float fresnel = pow(1.0 - NdotV, 2.4);
 
-    // Dynamic Moving Key Light: Gentle orbital dance + interactive cursor responsiveness
-    vec3 lightDir = normalize(vec3(
-      -0.42 + sin(uTime * 1.35) * 0.16 + uMouse.x * 0.28,
-       0.46 + cos(uTime * 1.10) * 0.14 - uMouse.y * 0.28,
-       0.82 + sin(uTime * 0.85) * 0.10
-    ));
+    // Procedural anti-aliased latitude lines (16 divisions)
+    float latFract = fract(vUv.y * 16.0 - 0.5) - 0.5;
+    float latLine = abs(latFract) / max(fwidth(vUv.y * 16.0), 0.001);
+    float latGrid = 1.0 - smoothstep(0.0, 1.4, latLine);
 
-    // Smooth wrapped diffuse lighting (Key light with orbital drift)
-    float nDotL = dot(normal, lightDir);
-    float diff = clamp((nDotL + 0.50) / 1.50, 0.0, 1.0);
+    // Procedural anti-aliased longitude lines (28 divisions)
+    float lonFract = fract(vUv.x * 28.0 - 0.5) - 0.5;
+    float lonLine = abs(lonFract) / max(fwidth(vUv.x * 28.0), 0.001);
+    float lonGrid = 1.0 - smoothstep(0.0, 1.4, lonLine);
 
-    // Dynamic Multi-Octave Fluid Light Waves (Living Liquid Motion on Surface)
-    float wave1 = sin(normal.x * 4.0 + normal.y * 3.2 + uTime * 1.6);
-    float wave2 = cos(normal.y * 4.5 - normal.z * 3.0 + uTime * 1.2);
-    float wave3 = sin((normal.x + normal.z) * 5.5 - uTime * 2.0);
-    float fluidLight = (wave1 * 0.5 + wave2 * 0.35 + wave3 * 0.15) * 0.038;
-    diff = clamp(diff + fluidLight, 0.0, 1.0);
+    float totalGrid = clamp(latGrid + lonGrid, 0.0, 1.0);
 
-    // Rich Velvet Champagne / Golden Sand Palette (Matching voice agent.mp4)
-    vec3 cHighlight = vec3(1.0, 0.98, 0.92); // Pure luminous warm white
-    vec3 cSun       = vec3(0.97, 0.86, 0.62); // Radiant champagne gold
-    vec3 cAmber     = vec3(0.88, 0.72, 0.42); // Warm rich amber-sand midtone
-    vec3 cDark      = vec3(0.66, 0.48, 0.24); // Warm ochre shadow
-    vec3 cShadow    = vec3(0.42, 0.28, 0.12); // Deep velvety warm ambient shadow
+    // Holographic horizontal scanlines drifting down
+    float scanline = sin(vWorldPosition.y * 14.0 - uTime * 4.2) * 0.5 + 0.5;
 
-    vec3 col;
-    if (diff > 0.70) {
-      float t = (diff - 0.70) / 0.30;
-      col = mix(cSun, cHighlight, t);
-    } else if (diff > 0.40) {
-      float t = (diff - 0.40) / 0.30;
-      col = mix(cAmber, cSun, t);
-    } else if (diff > 0.15) {
-      float t = (diff - 0.15) / 0.25;
-      col = mix(cDark, cAmber, t);
-    } else {
-      float t = diff / 0.15;
-      col = mix(cShadow, cDark, t);
-    }
+    // Subtle holographic quantum interference flicker
+    float flicker = sin(uTime * 28.0) * 0.035 + 0.965;
 
-    // Secondary subtle fill light from bottom-right for spherical 3D depth
-    vec3 fillDir = normalize(vec3(0.50, -0.40, 0.60));
-    float fillDiff = clamp((dot(normal, fillDir) + 0.3) / 1.3, 0.0, 1.0) * 0.18;
-    col += cAmber * fillDiff;
+    // Interior is transparent/deep dark so glowing singularity core is visible inside!
+    vec3 interiorCol = uBaseColor * 0.15;
+    vec3 rimCol = mix(uBaseColor, uGlowColor, fresnel);
+    vec3 gridCol = uGridColor;
 
-    // Moving Luminous Inner Core (Focused glowing nucleus from voice agent.mp4)
-    vec3 corePos = normalize(vec3(
-      -0.16 + sin(uTime * 1.1) * 0.10 + uMouse.x * 0.18,
-       0.16 + cos(uTime * 0.9) * 0.08 - uMouse.y * 0.18,
-       0.96
-    ));
-    float coreDist = length(normal - corePos);
-    // Tighter, focused radial nucleus falloff (peaks in center, fades smoothly)
-    float coreGlow = smoothstep(0.85, 0.0, coreDist);
-    // Subtle breathing light caustics inside the core
-    float coreRipple = sin(coreDist * 18.0 - uTime * 3.8) * 0.5 + 0.5;
-    float coreIntensity = pow(coreGlow, 2.2) * (0.52 + coreRipple * 0.18 + uPulse * 0.45);
-    col = mix(col, cHighlight, clamp(coreIntensity, 0.0, 0.92));
+    vec3 finalColor = mix(interiorCol, rimCol, fresnel);
+    finalColor = mix(finalColor, gridCol, totalGrid * 0.85);
+    finalColor *= (0.88 + scanline * 0.16) * flicker;
 
-    // Silky specular highlight with moving light
-    vec3 halfDir = normalize(lightDir + viewDir);
-    float nDotH = clamp(dot(normal, halfDir), 0.0, 1.0);
-    float spec = pow(nDotH, 18.0 + (1.0 - uPulse) * 8.0);
-    col += cHighlight * spec * (0.45 + uPulse * 0.40);
+    // Alpha composition: Transparent center, glowing grid lines, luminous rim, voice flare
+    float alpha = fresnel * 0.55 + totalGrid * 0.60;
+    alpha += uPulse * 0.35;
+    alpha = clamp(alpha, 0.02, 0.95);
 
-    // Fresnel rim sheen (delicate edge glow)
-    float ndv = clamp(dot(normal, viewDir), 0.0, 1.0);
-    float rim = pow(1.0 - ndv, 3.0);
-    col += vec3(0.98, 0.88, 0.65) * rim * (0.20 + uPulse * 0.20);
-
-    gl_FragColor = vec4(col, 1.0);
+    gl_FragColor = vec4(finalColor, alpha);
   }
 `;
 
-const swastikFragmentShader = `
-  uniform float uTime;
-  uniform float uPulse;
-  uniform vec2 uMouse;
+// Outer Atmospheric Boundary Fresnel Shader
+const jarvisAtmosphereFragShader = `
+  uniform vec3 uColor;
   varying vec3 vNormal;
   varying vec3 vViewPosition;
-  varying vec3 vWorldPosition;
 
   void main() {
     vec3 normal = normalize(vNormal);
     vec3 viewDir = normalize(vViewPosition);
-
-    // Dynamic Moving Key Light: Gentle orbital dance + interactive cursor responsiveness
-    vec3 lightDir = normalize(vec3(
-      -0.42 + sin(uTime * 1.35 + 1.57) * 0.16 + uMouse.x * 0.28,
-       0.46 + cos(uTime * 1.10 + 1.57) * 0.14 - uMouse.y * 0.28,
-       0.82 + cos(uTime * 0.85) * 0.10
-    ));
-
-    // Smooth wrapped diffuse lighting (Key light with orbital drift)
-    float nDotL = dot(normal, lightDir);
-    float diff = clamp((nDotL + 0.50) / 1.50, 0.0, 1.0);
-
-    // Dynamic Multi-Octave Fluid Light Waves
-    float wave1 = sin(normal.x * 4.0 + normal.y * 3.2 + uTime * 1.6 + 2.0);
-    float wave2 = cos(normal.y * 4.5 - normal.z * 3.0 + uTime * 1.2 + 1.0);
-    float wave3 = sin((normal.x + normal.z) * 5.5 - uTime * 2.0 + 0.5);
-    float fluidLight = (wave1 * 0.5 + wave2 * 0.35 + wave3 * 0.15) * 0.038;
-    diff = clamp(diff + fluidLight, 0.0, 1.0);
-
-    // Glowing Mint & Oceanic Teal Palette (Matching voice agent.mp4)
-    vec3 cHighlight = vec3(0.96, 1.0, 1.0);   // Pure luminous cyan-white
-    vec3 cAqua      = vec3(0.68, 0.96, 0.93); // Radiant pastel cyan
-    vec3 cTeal      = vec3(0.32, 0.82, 0.76); // Glowing turquoise midtone
-    vec3 cDark      = vec3(0.14, 0.58, 0.54); // Deep seafoam teal
-    vec3 cShadow    = vec3(0.06, 0.34, 0.32); // Deep oceanic ambient shadow
-
-    vec3 col;
-    if (diff > 0.70) {
-      float t = (diff - 0.70) / 0.30;
-      col = mix(cAqua, cHighlight, t);
-    } else if (diff > 0.40) {
-      float t = (diff - 0.40) / 0.30;
-      col = mix(cTeal, cAqua, t);
-    } else if (diff > 0.15) {
-      float t = (diff - 0.15) / 0.25;
-      col = mix(cDark, cTeal, t);
-    } else {
-      float t = diff / 0.15;
-      col = mix(cShadow, cDark, t);
-    }
-
-    // Secondary fill light from bottom-right
-    vec3 fillDir = normalize(vec3(0.50, -0.40, 0.60));
-    float fillDiff = clamp((dot(normal, fillDir) + 0.3) / 1.3, 0.0, 1.0) * 0.18;
-    col += cTeal * fillDiff;
-
-    // Moving Luminous Inner Core (Focused glowing nucleus)
-    vec3 corePos = normalize(vec3(
-      -0.16 + sin(uTime * 1.1 + 2.0) * 0.10 + uMouse.x * 0.18,
-       0.16 + cos(uTime * 0.9 + 2.0) * 0.08 - uMouse.y * 0.18,
-       0.96
-    ));
-    float coreDist = length(normal - corePos);
-    float coreGlow = smoothstep(0.85, 0.0, coreDist);
-    float coreRipple = sin(coreDist * 18.0 - uTime * 3.8) * 0.5 + 0.5;
-    float coreIntensity = pow(coreGlow, 2.2) * (0.52 + coreRipple * 0.18 + uPulse * 0.45);
-    col = mix(col, cHighlight, clamp(coreIntensity, 0.0, 0.92));
-
-    // Specular highlight with moving light
-    vec3 halfDir = normalize(lightDir + viewDir);
-    float nDotH = clamp(dot(normal, halfDir), 0.0, 1.0);
-    float spec = pow(nDotH, 18.0 + (1.0 - uPulse) * 8.0);
-    col += cHighlight * spec * (0.45 + uPulse * 0.40);
-
-    // Fresnel rim sheen
-    float ndv = clamp(dot(normal, viewDir), 0.0, 1.0);
-    float rim = pow(1.0 - ndv, 3.0);
-    col += vec3(0.65, 0.98, 0.94) * rim * (0.20 + uPulse * 0.20);
-
-    gl_FragColor = vec4(col, 1.0);
+    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.4);
+    float alpha = fresnel * 0.38;
+    gl_FragColor = vec4(uColor, alpha);
   }
 `;
 
 // ------------------------------------------------------------------
-// Smooth 3D Sphere & Acoustic Ripple System (Exact Match to User Reference)
+// Master Builder: Iron Man JARVIS 3D Holographic Sphere
+// (True 3D Volumetric Spherical Hologram from Video Project 2.mp4 & Images 1 & 2)
 // ------------------------------------------------------------------
-function createOrbSystem(isPatient) {
+function createJarvisHologramOrb(config = {}) {
+  const baseRadius = config.baseRadius || 6.5;
+  let mode = config.mode || 'gold'; // 'gold' or 'cyan'
+  const dir = config.dir || (mode === 'gold' ? 1 : -1);
+
   const group = new THREE.Group();
-  const radius = isPatient ? 6.5 : 6.8;
-  const rippleColor = isPatient ? 0xF5A623 : 0x14C8B2;
-  const dir = isPatient ? 1 : -1;
 
-  // 1. Silky Smooth 3D Illuminated Sphere with Dynamic Light Motion
-  const sphereGeo = new THREE.SphereGeometry(radius, 64, 64);
-  const shaderMat = new THREE.ShaderMaterial({
-    vertexShader: sphereVertexShader,
-    fragmentShader: isPatient ? patientFragmentShader : swastikFragmentShader,
+  // Color Palettes
+  const PALETTES = {
+    gold: {
+      baseColor: new THREE.Vector3(0.96, 0.65, 0.14),   // #F5A623 Molten Gold
+      glowColor: new THREE.Vector3(1.0, 0.88, 0.48),    // #FFE07A Incandescent Flare
+      gridColor: new THREE.Vector3(1.0, 0.94, 0.72),    // #FFF0B8 Coordinate Grid
+      rimColor: new THREE.Vector3(1.0, 0.52, 0.08),     // #FF8514 Corona
+      hexPrimary: 0xF5A623,
+      hexAccent: 0xFFD54F,
+      hexBright: 0xFFF9C4,
+      hexDeep: 0xD97706,
+      coreMap: goldenCoreTexture,
+      glowMap: goldenGlowTexture,
+    },
+    cyan: {
+      baseColor: new THREE.Vector3(0.0, 0.88, 1.0),     // #00E0FF Electric Cyan
+      glowColor: new THREE.Vector3(0.55, 0.98, 1.0),    // #8CF9FF Neon Ice
+      gridColor: new THREE.Vector3(0.85, 1.0, 1.0),     // #D8FFFF Coordinate Grid
+      rimColor: new THREE.Vector3(0.08, 0.65, 0.95),    // #14A6F3 Deep Aqua
+      hexPrimary: 0x00E5FF,
+      hexAccent: 0x14C8B2,
+      hexBright: 0x7DF9FF,
+      hexDeep: 0x0284C7,
+      coreMap: cyanCoreTexture,
+      glowMap: cyanGlowTexture,
+    }
+  };
+
+  let curPalette = PALETTES[mode];
+
+  // 1. Central Thermonuclear Singularity Core
+  const coreMat = new THREE.SpriteMaterial({
+    map: curPalette.coreMap,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    opacity: 0.96,
+    depthWrite: false,
+  });
+  const coreSprite = new THREE.Sprite(coreMat);
+  coreSprite.scale.set(baseRadius * 1.55, baseRadius * 1.55, 1);
+  group.add(coreSprite);
+
+  // Volumetric Halo Atmosphere
+  const innerHaloMat = new THREE.SpriteMaterial({
+    map: curPalette.glowMap,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    opacity: 0.72,
+    depthWrite: false,
+  });
+  const innerHalo = new THREE.Sprite(innerHaloMat);
+  innerHalo.scale.set(baseRadius * 3.6, baseRadius * 3.6, 1);
+  innerHalo.position.z = -0.5;
+  group.add(innerHalo);
+
+  // 2. 3D Holographic Globe Coordinate Cage (True 3D Sphere from Video Project 2.mp4)
+  const globeGeo = new THREE.SphereGeometry(baseRadius * 1.04, 48, 28);
+  const globeMat = new THREE.ShaderMaterial({
+    vertexShader: jarvisHologramVertexShader,
+    fragmentShader: jarvisHologramFragShader,
     uniforms: {
       uTime: { value: 0.0 },
       uPulse: { value: 0.0 },
-      uMouse: { value: new THREE.Vector2(0, 0) },
+      uBaseColor: { value: curPalette.baseColor.clone() },
+      uGlowColor: { value: curPalette.glowColor.clone() },
+      uGridColor: { value: curPalette.gridColor.clone() },
     },
-  });
-  const sphereMesh = new THREE.Mesh(sphereGeo, shaderMat);
-  group.add(sphereMesh);
-
-  // 2. Luminous Atmospheric Halo Glow Behind Sphere (voice agent.mp4)
-  const haloMat = new THREE.SpriteMaterial({
-    map: isPatient ? glowTexturePatient : glowTextureSwastik,
     transparent: true,
     blending: THREE.AdditiveBlending,
-    opacity: 0.45,
     depthWrite: false,
+    side: THREE.DoubleSide,
   });
-  const halo = new THREE.Sprite(haloMat);
-  halo.position.set(0, 0, -1.2);
-  halo.scale.set(radius * 3.6, radius * 3.6, 1);
-  group.add(halo);
+  const globeMesh = new THREE.Mesh(globeGeo, globeMat);
+  group.add(globeMesh);
 
-  // 3. Continuous Propagating Acoustic Ripple Wave Rings (voice agent.mp4)
-  const ripples = [];
-  const RIPPLE_COUNT = 5;
-  const minRippleRadius = radius * 1.15;
-  const maxRippleRadius = radius * 2.85;
+  // Faint Outer Atmospheric Boundary Sphere
+  const outerSphereGeo = new THREE.SphereGeometry(baseRadius * 1.34, 36, 36);
+  const outerSphereMat = new THREE.ShaderMaterial({
+    vertexShader: goldenOuterRimVertexShader,
+    fragmentShader: jarvisAtmosphereFragShader,
+    uniforms: {
+      uColor: { value: curPalette.rimColor.clone() },
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.BackSide,
+  });
+  const outerSphereMesh = new THREE.Mesh(outerSphereGeo, outerSphereMat);
+  group.add(outerSphereMesh);
 
-  for (let i = 0; i < RIPPLE_COUNT; i++) {
-    const pts = createCirclePoints(1.0, 64);
-    const geo = new THREE.BufferGeometry().setFromPoints(pts);
-    const mat = new THREE.LineBasicMaterial({
-      color: rippleColor,
+  // 3. 3D Gyroscopic Gimbal Rings (Astrolabe from Video Project 2.mp4)
+  // 5 Nested Rings rotating in 3D with independent Euler angles and precession:
+  const gimbalRings = [];
+
+  // Helper: Create Segmented Arc Lines
+  function createSegmentedArcGeometry(radius, segmentCount, arcAngleRatio) {
+    const pts = [];
+    const totalCirc = Math.PI * 2;
+    const segStep = totalCirc / segmentCount;
+    const activeArc = segStep * arcAngleRatio;
+    const stepsPerSeg = 24;
+
+    for (let s = 0; s < segmentCount; s++) {
+      const startA = s * segStep;
+      for (let j = 0; j < stepsPerSeg; j++) {
+        const a1 = startA + activeArc * (j / stepsPerSeg);
+        const a2 = startA + activeArc * ((j + 1) / stepsPerSeg);
+        pts.push(new THREE.Vector3(Math.cos(a1) * radius, Math.sin(a1) * radius, 0));
+        pts.push(new THREE.Vector3(Math.cos(a2) * radius, Math.sin(a2) * radius, 0));
+      }
+    }
+    return new THREE.BufferGeometry().setFromPoints(pts);
+  }
+
+  // Gimbal 1: Equatorial Gyroscope Ring (3 Segmented Arcs with 3 Tracking Nodes)
+  const g1Group = new THREE.Group();
+  const g1Geo = createSegmentedArcGeometry(baseRadius * 0.88, 3, 0.78);
+  const g1Mat = new THREE.LineSegments(g1Geo, new THREE.LineBasicMaterial({
+    color: curPalette.hexBright,
+    transparent: true,
+    opacity: 0.88,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  }));
+  g1Group.add(g1Mat);
+  // 3 Orbital Tracking Beads
+  const g1Beads = [];
+  for (let b = 0; b < 3; b++) {
+    const bMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.22, 12, 12),
+      new THREE.MeshBasicMaterial({ color: curPalette.hexBright, transparent: true, opacity: 0.95 })
+    );
+    const bAngle = (b / 3) * Math.PI * 2;
+    bMesh.position.set(Math.cos(bAngle) * baseRadius * 0.88, Math.sin(bAngle) * baseRadius * 0.88, 0);
+    g1Group.add(bMesh);
+    g1Beads.push(bMesh);
+  }
+  group.add(g1Group);
+  gimbalRings.push({ group: g1Group, mat: g1Mat, rotSpeed: [0, 0, 0.014 * dir], baseOpacity: 0.88 });
+
+  // Gimbal 2: Polar Meridian Ring (Tilted 90° X, rotating along longitude)
+  const g2Group = new THREE.Group();
+  g2Group.rotation.x = Math.PI * 0.5;
+  const g2Pts = createCirclePoints(baseRadius * 0.98, 80);
+  const g2Mat = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(g2Pts),
+    new THREE.LineBasicMaterial({ color: curPalette.hexPrimary, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  g2Group.add(g2Mat);
+  group.add(g2Group);
+  gimbalRings.push({ group: g2Group, mat: g2Mat.material, rotSpeed: [0, 0.016 * dir, 0], baseOpacity: 0.75 });
+
+  // Gimbal 3: Orbital Gimbal Alpha (Tilted 45° X, 25° Y, 4 Segmented Arcs with 4 Nodes)
+  const g3Group = new THREE.Group();
+  g3Group.rotation.set(0.78, 0.35, 0.20);
+  const g3Geo = createSegmentedArcGeometry(baseRadius * 1.10, 4, 0.72);
+  const g3Mat = new THREE.LineSegments(g3Geo, new THREE.LineBasicMaterial({
+    color: curPalette.hexAccent,
+    transparent: true,
+    opacity: 0.82,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  }));
+  g3Group.add(g3Mat);
+  group.add(g3Group);
+  gimbalRings.push({ group: g3Group, mat: g3Mat, rotSpeed: [-0.009 * dir, 0.012 * dir, 0.006], baseOpacity: 0.82 });
+
+  // Gimbal 4: Orbital Gimbal Beta (Tilted -55° X, 35° Z, with 48 Radial Local Ticks)
+  const g4Group = new THREE.Group();
+  g4Group.rotation.set(-0.65, 0.85, -0.45);
+  const g4TickPts = [];
+  const g4R1 = baseRadius * 1.18;
+  const g4Ticks = 48;
+  for (let k = 0; k < g4Ticks; k++) {
+    const a = (k / g4Ticks) * Math.PI * 2;
+    const len = k % 4 === 0 ? baseRadius * 0.06 : baseRadius * 0.03;
+    g4TickPts.push(new THREE.Vector3(Math.cos(a) * g4R1, Math.sin(a) * g4R1, 0));
+    g4TickPts.push(new THREE.Vector3(Math.cos(a) * (g4R1 + len), Math.sin(a) * (g4R1 + len), 0));
+  }
+  const g4Mat = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints(g4TickPts),
+    new THREE.LineBasicMaterial({ color: curPalette.hexPrimary, transparent: true, opacity: 0.70, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  g4Group.add(g4Mat);
+  group.add(g4Group);
+  gimbalRings.push({ group: g4Group, mat: g4Mat, rotSpeed: [0.008 * dir, -0.010 * dir, 0.011], baseOpacity: 0.70 });
+
+  // Gimbal 5: Outer Telemetry Reticle Track (72 Precision Ticks from Image 1)
+  const g5Group = new THREE.Group();
+  const tickPts = [];
+  const tickCount = 72;
+  const tickR1 = baseRadius * 1.28;
+  for (let i = 0; i < tickCount; i++) {
+    const a = (i / tickCount) * Math.PI * 2;
+    const isMajor = i % 6 === 0;
+    const isMedium = i % 3 === 0;
+    const tickLen = isMajor ? baseRadius * 0.08 : (isMedium ? baseRadius * 0.045 : baseRadius * 0.025);
+    tickPts.push(new THREE.Vector3(Math.cos(a) * tickR1, Math.sin(a) * tickR1, 0));
+    tickPts.push(new THREE.Vector3(Math.cos(a) * (tickR1 + tickLen), Math.sin(a) * (tickR1 + tickLen), 0));
+  }
+  const g5Mat = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints(tickPts),
+    new THREE.LineBasicMaterial({ color: curPalette.hexAccent, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  g5Group.add(g5Mat);
+
+  // Outer Segmented Radar Brackets
+  const bracketGeo = createSegmentedArcGeometry(baseRadius * 1.40, 4, 0.45);
+  const bracketMat = new THREE.LineSegments(bracketGeo, new THREE.LineBasicMaterial({
+    color: curPalette.hexBright,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  }));
+  g5Group.add(bracketMat);
+
+  group.add(g5Group);
+  gimbalRings.push({ group: g5Group, mat: g5Mat, rotSpeed: [0, 0, -0.004 * dir], baseOpacity: 0.65 });
+
+  // 4. 3D Internal Swirling Magnetic Plasma Filaments (3D Lissajous & Double Helix)
+  const plasmaCurves = [];
+
+  // Curve A: 3D Spherical Lissajous Knot
+  const lissPts = [];
+  const lissSteps = 160;
+  for (let s = 0; s <= lissSteps; s++) {
+    const t = (s / lissSteps) * Math.PI * 2;
+    const r = baseRadius * 0.68;
+    const x = r * Math.sin(3.0 * t) * Math.cos(t);
+    const y = r * Math.sin(3.0 * t) * Math.sin(t);
+    const z = r * Math.cos(3.0 * t);
+    lissPts.push(new THREE.Vector3(x, y, z));
+  }
+  const lissMat = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(lissPts),
+    new THREE.LineBasicMaterial({ color: curPalette.hexBright, transparent: true, opacity: 0.78, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  group.add(lissMat);
+  plasmaCurves.push({ line: lissMat, rotSpeed: [0.012 * dir, 0.016 * dir, 0.009], baseOpacity: 0.78 });
+
+  // Curve B: 3D Double-Helix Polar Twister
+  const helixPts = [];
+  const helixSteps = 120;
+  for (let h = 0; h <= helixSteps; h++) {
+    const ht = (h / helixSteps) * Math.PI * 2 * 3.0;
+    const z = (h / helixSteps - 0.5) * baseRadius * 1.35;
+    const hr = baseRadius * (0.22 + 0.40 * Math.sin((h / helixSteps) * Math.PI));
+    helixPts.push(new THREE.Vector3(Math.cos(ht) * hr, Math.sin(ht) * hr, z));
+  }
+  const helixMat = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(helixPts),
+    new THREE.LineBasicMaterial({ color: curPalette.hexAccent, transparent: true, opacity: 0.72, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  group.add(helixMat);
+  plasmaCurves.push({ line: helixMat, rotSpeed: [-0.010, 0, 0.022 * dir], baseOpacity: 0.72 });
+
+
+
+  // 6. 3D Expanding Spherical Acoustic Shockwaves
+  const shockwaves = [];
+  const SHOCKWAVE_COUNT = 4;
+  for (let s = 0; s < SHOCKWAVE_COUNT; s++) {
+    const sPts = createCirclePoints(1.0, 72);
+    const sGeo = new THREE.BufferGeometry().setFromPoints(sPts);
+    const sLineMat = new THREE.LineBasicMaterial({
+      color: curPalette.hexPrimary,
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
-    const line = new THREE.LineLoop(geo, mat);
-    group.add(line);
-    ripples.push({
-      line,
-      mat,
-      phase: i / RIPPLE_COUNT,
-      minRadius: minRippleRadius,
-      maxRadius: maxRippleRadius,
-      baseRadius: radius,
+    const sLine = new THREE.LineLoop(sGeo, sLineMat);
+    // Orient in different 3D planes (X-Y, Y-Z, X-Z)
+    if (s % 3 === 1) sLine.rotation.x = Math.PI * 0.5;
+    if (s % 3 === 2) sLine.rotation.y = Math.PI * 0.5;
+    group.add(sLine);
+    shockwaves.push({ line: sLine, mat: sLineMat, phase: s / SHOCKWAVE_COUNT, minR: baseRadius * 1.0, maxR: baseRadius * 2.8 });
+  }
+
+  // 7. HUD Framing Elements (Image 1 top bar and rosette)
+  const hudFraming = new THREE.Group();
+  const topBarPts = [];
+  const barY = baseRadius * 1.42;
+  const barW = baseRadius * 1.45;
+  topBarPts.push(new THREE.Vector3(-barW * 0.5, barY, 0));
+  topBarPts.push(new THREE.Vector3(barW * 0.5, barY, 0));
+  topBarPts.push(new THREE.Vector3(-barW * 0.5, barY + 0.18, 0));
+  topBarPts.push(new THREE.Vector3(barW * 0.5, barY + 0.18, 0));
+  const topBarMat = new THREE.LineSegments(
+    new THREE.BufferGeometry().setFromPoints(topBarPts),
+    new THREE.LineBasicMaterial({ color: curPalette.hexAccent, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending })
+  );
+  hudFraming.add(topBarMat);
+
+  const rosetteGroup = new THREE.Group();
+  rosetteGroup.position.set(baseRadius * 1.20, -baseRadius * 1.25, 0);
+  const rosetteR = baseRadius * 0.22;
+  rosetteGroup.add(new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(createCirclePoints(rosetteR, 36)),
+    new THREE.LineBasicMaterial({ color: curPalette.hexPrimary, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending })
+  ));
+  rosetteGroup.add(new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(createCirclePoints(rosetteR * 0.55, 24)),
+    new THREE.LineBasicMaterial({ color: curPalette.hexBright, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending })
+  ));
+  hudFraming.add(rosetteGroup);
+  group.add(hudFraming);
+
+  // Dynamic Mode / Theme Switcher
+  function setMode(newMode) {
+    if (!PALETTES[newMode]) return;
+    mode = newMode;
+    curPalette = PALETTES[mode];
+
+    coreMat.map = curPalette.coreMap;
+    coreMat.needsUpdate = true;
+    innerHaloMat.map = curPalette.glowMap;
+    innerHaloMat.needsUpdate = true;
+
+    globeMat.uniforms.uBaseColor.value.copy(curPalette.baseColor);
+    globeMat.uniforms.uGlowColor.value.copy(curPalette.glowColor);
+    globeMat.uniforms.uGridColor.value.copy(curPalette.gridColor);
+    outerSphereMat.uniforms.uColor.value.copy(curPalette.rimColor);
+
+    if (g1Mat && g1Mat.material) g1Mat.material.color.setHex(curPalette.hexBright);
+    g1Beads.forEach(b => b.material && b.material.color.setHex(curPalette.hexBright));
+    if (g2Mat && g2Mat.material) g2Mat.material.color.setHex(curPalette.hexPrimary);
+    if (g3Mat && g3Mat.material) g3Mat.material.color.setHex(curPalette.hexAccent);
+    if (g4Mat && g4Mat.material) g4Mat.material.color.setHex(curPalette.hexPrimary);
+    if (g5Mat && g5Mat.material) g5Mat.material.color.setHex(curPalette.hexAccent);
+    if (bracketMat && bracketMat.material) bracketMat.material.color.setHex(curPalette.hexBright);
+
+    if (lissMat && lissMat.material) lissMat.material.color.setHex(curPalette.hexBright);
+    if (helixMat && helixMat.material) helixMat.material.color.setHex(curPalette.hexAccent);
+
+    shockwaves.forEach(sw => sw.mat && sw.mat.color.setHex(curPalette.hexPrimary));
+    if (topBarMat && topBarMat.material) topBarMat.material.color.setHex(curPalette.hexAccent);
+  }
+
+  // Animation Update Function
+  function update(time, pulse, isMobile) {
+    const voiceExpand = 1.0 + pulse * 0.55;
+    const voiceSpeed = 1.0 + pulse * 6.5;
+
+    // Update Globe Shader Uniforms
+    globeMat.uniforms.uTime.value = time * 0.0015;
+    globeMat.uniforms.uPulse.value = pulse;
+
+    // Slowly rotate the 3D Holographic Globe Coordinate Mesh
+    globeMesh.rotation.y += 0.0028 * dir * voiceSpeed;
+    globeMesh.rotation.x = Math.sin(time * 0.0006) * 0.15;
+
+    // Core Singularity Pulsing
+    coreSprite.scale.setScalar(baseRadius * (1.55 + Math.sin(time * 0.002) * 0.08 + pulse * 1.3));
+    coreMat.opacity = Math.min(1.0, 0.94 + pulse * 0.06);
+    innerHalo.scale.setScalar(baseRadius * (3.6 + Math.sin(time * 0.0016) * 0.2 + pulse * 1.8));
+    innerHaloMat.opacity = 0.35 + Math.sin(time * 0.002) * 0.06 + pulse * 0.65;
+
+    // 3D Gyroscopic Gimbal Rings Precession & Acceleration
+    gimbalRings.forEach((ring, idx) => {
+      ring.group.rotation.x += ring.rotSpeed[0] * voiceSpeed;
+      ring.group.rotation.y += ring.rotSpeed[1] * voiceSpeed;
+      ring.group.rotation.z += ring.rotSpeed[2] * voiceSpeed;
+      ring.mat.opacity = Math.min(1.0, ring.baseOpacity + pulse * 0.40 + Math.sin(time * 0.003 + idx) * 0.10);
+    });
+
+    // Rosette Widget Rotation
+    rosetteGroup.rotation.z += 0.008 + pulse * 0.025;
+
+    // 3D Internal Plasma Filaments Precession
+    plasmaCurves.forEach(pc => {
+      pc.line.rotation.x += pc.rotSpeed[0] * voiceSpeed;
+      pc.line.rotation.y += pc.rotSpeed[1] * voiceSpeed;
+      pc.line.rotation.z += pc.rotSpeed[2] * voiceSpeed;
+      pc.line.material.opacity = Math.min(1.0, pc.baseOpacity + pulse * 0.35);
+    });
+
+
+    // 3D Expanding Acoustic Shockwaves
+    const sSpeed = 0.0028 + pulse * 0.018;
+    shockwaves.forEach(sw => {
+      sw.phase = (sw.phase + sSpeed) % 1.0;
+      const curR = sw.minR + sw.phase * (sw.maxR - sw.minR);
+      sw.line.scale.set(curR, curR, curR);
+      const env = Math.sin(sw.phase * Math.PI);
+      sw.mat.opacity = env * (0.12 + pulse * 0.78);
     });
   }
 
-  // 4. Subtle Tilted Gyroscopic Orbit Ring with 1 Floating Telemetry Blip
-  const orbitGroup = new THREE.Group();
-  orbitGroup.rotation.set(0.35 * dir, 0.22, 0);
-  const orbitRadius = radius * 1.55;
-  const orbitPts = createCirclePoints(orbitRadius, 64);
-  const orbitGeo = new THREE.BufferGeometry().setFromPoints(orbitPts);
-  const orbitMat = new THREE.LineBasicMaterial({
-    color: rippleColor,
-    transparent: true,
-    opacity: 0.15,
-    blending: THREE.AdditiveBlending,
-  });
-  const orbitLine = new THREE.LineLoop(orbitGeo, orbitMat);
-  orbitGroup.add(orbitLine);
-
-  // Single micro blip node
-  const blipGeo = new THREE.SphereGeometry(0.24, 12, 12);
-  const blipMat = new THREE.MeshBasicMaterial({
-    color: isPatient ? 0xFFF0A0 : 0x90FFF5,
-    transparent: true,
-    opacity: 0.85,
-  });
-  const blipMesh = new THREE.Mesh(blipGeo, blipMat);
-  blipMesh.position.set(orbitRadius, 0, 0);
-  orbitGroup.add(blipMesh);
-  group.add(orbitGroup);
-
   return {
     group,
-    sphereMesh,
-    shaderMat,
-    halo,
-    haloMat,
-    ripples,
-    orbitGroup,
-    blipMesh,
-    orbitRadius,
-    dir,
-    baseRadius: radius,
+    baseRadius,
+    shaderMat: globeMat,
+    sphereMesh: globeMesh,
+    update,
+    setMode,
   };
 }
 
-const patientSystem = createOrbSystem(true);
-const swastikSystem = createOrbSystem(false);
+function createGoldenReactorOrb(baseRadius = 6.4) {
+  return createJarvisHologramOrb({ baseRadius, mode: 'gold' });
+}
+
+function createCyanPlasmaOrb(baseRadius = 6.8) {
+  return createJarvisHologramOrb({ baseRadius, mode: 'cyan' });
+}
+
+const patientSystem = createGoldenReactorOrb(6.4);
+const swastikSystem = createCyanPlasmaOrb(6.8);
 scene.add(patientSystem.group);
 scene.add(swastikSystem.group);
+
+// Global Hologram Theme Controller: 'jarvis' | 'dual' | 'cyan'
+let currentHologramTheme = 'dual';
+
+function setGlobalHologramTheme(theme) {
+  currentHologramTheme = theme;
+  if (theme === 'jarvis') {
+    patientSystem.setMode('gold');
+    swastikSystem.setMode('gold');
+  } else if (theme === 'cyan') {
+    patientSystem.setMode('cyan');
+    swastikSystem.setMode('cyan');
+  } else {
+    patientSystem.setMode('gold');
+    swastikSystem.setMode('cyan');
+  }
+  document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+  const btn = $(theme === 'jarvis' ? 'themeJarvisBtn' : theme === 'cyan' ? 'themeCyanBtn' : 'themeDualBtn');
+  if (btn) btn.classList.add('active');
+}
+
+// Bind theme switchers on DOM ready
+if (typeof window !== 'undefined') {
+  const attachThemeHandlers = () => {
+    const jBtn = $('themeJarvisBtn');
+    const dBtn = $('themeDualBtn');
+    const cBtn = $('themeCyanBtn');
+    if (jBtn) jBtn.onclick = () => setGlobalHologramTheme('jarvis');
+    if (dBtn) dBtn.onclick = () => setGlobalHologramTheme('dual');
+    if (cBtn) cBtn.onclick = () => setGlobalHologramTheme('cyan');
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', attachThemeHandlers);
+  } else {
+    attachThemeHandlers();
+  }
+}
 
 // ------------------------------------------------------------------
 // Swastik AI Thinking Mode Orbit Ring
@@ -524,17 +998,21 @@ swastikSystem.group.add(thinkingGroup);
 // ------------------------------------------------------------------
 // 3D Neural Synaptic Particle Stream (Helical Bridge between Spheres)
 // ------------------------------------------------------------------
-const STREAM_PARTICLE_COUNT = 130;
+const STREAM_PARTICLE_COUNT = 360;
 const streamPositions = new Float32Array(STREAM_PARTICLE_COUNT * 3);
 const streamColors = new Float32Array(STREAM_PARTICLE_COUNT * 3);
 const streamData = [];
 
 for (let i = 0; i < STREAM_PARTICLE_COUNT; i++) {
+  const isDust = i % 3 === 0;
   streamData.push({
     progress: Math.random(),
-    speed: 0.002 + Math.random() * 0.0035,
-    strand: Math.floor(Math.random() * 3),
+    speed: isDust ? (0.0018 + Math.random() * 0.0028) : (0.0028 + Math.random() * 0.0045),
+    strand: Math.floor(Math.random() * 4),
     phase: Math.random() * Math.PI * 2,
+    radiusJitter: (Math.random() - 0.5) * 0.85,
+    isDust: isDust,
+    sparkleRate: 2.5 + Math.random() * 5.0,
   });
 }
 
@@ -543,12 +1021,12 @@ streamGeo.setAttribute("position", new THREE.BufferAttribute(streamPositions, 3)
 streamGeo.setAttribute("color", new THREE.BufferAttribute(streamColors, 3));
 
 const streamMat = new THREE.PointsMaterial({
-  size: 2.2,
+  size: 3.4,
   map: dotTexture,
   vertexColors: true,
   transparent: true,
   blending: THREE.AdditiveBlending,
-  opacity: 0.85,
+  opacity: 0.92,
   depthWrite: false,
 });
 const streamPoints = new THREE.Points(streamGeo, streamMat);
@@ -803,18 +1281,18 @@ function resize() {
     // Stacked vertically on mobile / portrait view
     leftTargetPos.set(0, visibleHeight * 0.18, 0);
     rightTargetPos.set(0, -visibleHeight * 0.14, 0);
-    patientSystem.group.scale.setScalar(0.68);
-    swastikSystem.group.scale.setScalar(0.70);
+    patientSystem._baseGroupScale = 0.68;
+    swastikSystem._baseGroupScale = 0.70;
   } else if (isTablet) {
     leftTargetPos.set(-visibleWidth * 0.22, 0, 0);
     rightTargetPos.set(visibleWidth * 0.22, 0, 0);
-    patientSystem.group.scale.setScalar(0.9);
-    swastikSystem.group.scale.setScalar(0.92);
+    patientSystem._baseGroupScale = 0.9;
+    swastikSystem._baseGroupScale = 0.92;
   } else {
     leftTargetPos.set(-visibleWidth * 0.23, 0, 0);
     rightTargetPos.set(visibleWidth * 0.23, 0, 0);
-    patientSystem.group.scale.setScalar(1.0);
-    swastikSystem.group.scale.setScalar(1.02);
+    patientSystem._baseGroupScale = 1.0;
+    swastikSystem._baseGroupScale = 1.02;
   }
 }
 window.addEventListener("resize", resize);
@@ -850,6 +1328,34 @@ function init3DCardTilt() {
 init3DCardTilt();
 
 // ------------------------------------------------------------------
+// Real-Time Agent Voice Audio Analyser
+// ------------------------------------------------------------------
+let agentAnalyser = null;
+let agentDataArray = null;
+
+function getAgentAudioLevel() {
+  if (!agentAnalyser) {
+    if (!audioCtx || !voiceGain) return 0;
+    try {
+      agentAnalyser = audioCtx.createAnalyser();
+      agentAnalyser.fftSize = 64;
+      agentAnalyser.smoothingTimeConstant = 0.8;
+      agentDataArray = new Uint8Array(agentAnalyser.frequencyBinCount);
+      voiceGain.connect(agentAnalyser);
+    } catch (e) {
+      return 0;
+    }
+  }
+  if (!speaking || !agentDataArray) return 0;
+  agentAnalyser.getByteFrequencyData(agentDataArray);
+  let sum = 0;
+  for (let i = 0; i < agentDataArray.length; i++) {
+    sum += agentDataArray[i];
+  }
+  return sum / (agentDataArray.length * 255);
+}
+
+// ------------------------------------------------------------------
 // Main 3D WebGL Animation Loop
 // ------------------------------------------------------------------
 let lastTime = 0;
@@ -872,64 +1378,74 @@ function animate(time) {
   }
 
   // Audio Pulses
-  const userPulse = Math.min(1.2, userRMS * 8);
-  const agentPulse = speaking ? 0.35 + Math.sin(time * 0.007) * 0.2 : 0;
-  const isCommunicating = userPulse > 0.02 || speaking;
+  const userPulse = Math.min(1.2, userRMS * 8.5);
+  const realAgentLevel = getAgentAudioLevel();
+  const agentPulse = speaking
+    ? Math.min(1.2, Math.max(realAgentLevel * 2.4, 0.48 + Math.sin(time * 0.014) * 0.28 + Math.sin(time * 0.033) * 0.18))
+    : 0;
+  const isCommunicating = userPulse > 0.03 || speaking;
 
-  // Update Shader Uniforms: Dynamic Light Motion & Speech Intensity
-  patientSystem.shaderMat.uniforms.uTime.value = time * 0.001;
-  patientSystem.shaderMat.uniforms.uPulse.value = userPulse;
-  patientSystem.shaderMat.uniforms.uMouse.value.lerp(new THREE.Vector2(currentMouseX, currentMouseY), 0.06);
+  // Update Shader Uniforms (if defined)
+  if (patientSystem.shaderMat && patientSystem.shaderMat.uniforms) {
+    patientSystem.shaderMat.uniforms.uTime.value = time * 0.001;
+    patientSystem.shaderMat.uniforms.uPulse.value = userPulse;
+  }
+  if (swastikSystem.shaderMat && swastikSystem.shaderMat.uniforms) {
+    swastikSystem.shaderMat.uniforms.uTime.value = time * 0.001;
+    swastikSystem.shaderMat.uniforms.uPulse.value = agentPulse;
+  }
+  if (patientSystem.sphereMesh) patientSystem.sphereMesh.scale.setScalar(1.0 + userPulse * 0.75);
+  if (swastikSystem.sphereMesh) swastikSystem.sphereMesh.scale.setScalar(1.0 + agentPulse * 0.75);
 
-  swastikSystem.shaderMat.uniforms.uTime.value = time * 0.001;
-  swastikSystem.shaderMat.uniforms.uPulse.value = agentPulse;
-  swastikSystem.shaderMat.uniforms.uMouse.value.lerp(new THREE.Vector2(currentMouseX, currentMouseY), 0.06);
+  // Dynamic Speech-Reactive Orb Sizing:
+  // When Patient speaks: Patient orb grows up to 1.55x (55% larger!),
+  // while Swastik orb subtly eases into an attentive listening state (0.92x).
+  // When Swastik speaks: Swastik orb grows up to 1.58x (58% larger!),
+  // while Patient orb subtly eases into an attentive listening state (0.92x).
+  // When idle: both relax at base scale (1.0x) with gentle organic breathing.
+  const pBaseScale = patientSystem._baseGroupScale || 1.0;
+  const sBaseScale = swastikSystem._baseGroupScale || 1.02;
 
-  // Organic Sphere Scale Breathing on Voice
-  patientSystem.sphereMesh.scale.setScalar(1.0 + userPulse * 0.07);
-  swastikSystem.sphereMesh.scale.setScalar(1.0 + agentPulse * 0.07);
+  let pTargetScale = pBaseScale;
+  let sTargetScale = sBaseScale;
 
-  // Halo Glow Breathing with Light Motion (voice agent.mp4)
-  patientSystem.halo.scale.setScalar(patientSystem.baseRadius * (3.4 + Math.sin(time * 0.0016) * 0.25 + userPulse * 0.75));
-  patientSystem.haloMat.opacity = 0.35 + Math.sin(time * 0.002) * 0.08 + userPulse * 0.35;
+  if (userPulse > 0.03) {
+    // Patient speaking: dramatic scale expansion (up to 1.55x)
+    pTargetScale = pBaseScale * (1.0 + userPulse * 0.52);
+    sTargetScale = sBaseScale * Math.max(0.90, 1.0 - userPulse * 0.08);
+  } else if (speaking) {
+    // Swastik AI speaking: dramatic scale expansion (up to 1.58x)
+    sTargetScale = sBaseScale * (1.0 + agentPulse * 0.54);
+    pTargetScale = pBaseScale * Math.max(0.90, 1.0 - agentPulse * 0.08);
+  } else {
+    // Idle ambient breathing
+    pTargetScale = pBaseScale * (1.0 + Math.sin(time * 0.002) * 0.035);
+    sTargetScale = sBaseScale * (1.0 + Math.sin(time * 0.002 + 1.5) * 0.035);
+  }
 
-  swastikSystem.halo.scale.setScalar(swastikSystem.baseRadius * (3.4 + Math.sin(time * 0.0016 + 1.5) * 0.25 + agentPulse * 0.75));
-  swastikSystem.haloMat.opacity = 0.35 + Math.sin(time * 0.002 + 1.5) * 0.08 + agentPulse * 0.35;
+  // Snappy yet organic lerp for instantaneous speech responsiveness
+  const pCurScale = patientSystem.group.scale.x;
+  const sCurScale = swastikSystem.group.scale.x;
+  const pNewScale = pCurScale + (pTargetScale - pCurScale) * 0.14;
+  const sNewScale = sCurScale + (sTargetScale - sCurScale) * 0.14;
+  patientSystem.group.scale.setScalar(pNewScale);
+  swastikSystem.group.scale.setScalar(sNewScale);
 
-  // Continuous Acoustic Ripple Wave Propagation (Direct match to voice agent.mp4)
-  const patientSpeed = 0.0026 + userPulse * 0.0065;
-  patientSystem.ripples.forEach((rip) => {
-    rip.phase = (rip.phase + patientSpeed) % 1.0;
-    const currentR = rip.minRadius + rip.phase * (rip.maxRadius - rip.minRadius);
-    rip.line.scale.set(currentR, currentR, 1);
-    const envelope = Math.sin(rip.phase * Math.PI);
-    rip.mat.opacity = envelope * (0.12 + userPulse * 0.38);
-  });
+  // Update Golden Sci-Fi Arc Reactor Orb (Image 1)
+  if (patientSystem && patientSystem.update) {
+    patientSystem.update(time, userPulse, isMobile);
+  }
 
-  const swastikSpeed = 0.0026 + agentPulse * 0.0065;
-  swastikSystem.ripples.forEach((rip) => {
-    rip.phase = (rip.phase + swastikSpeed) % 1.0;
-    const currentR = rip.minRadius + rip.phase * (rip.maxRadius - rip.minRadius);
-    rip.line.scale.set(currentR, currentR, 1);
-    const envelope = Math.sin(rip.phase * Math.PI);
-    rip.mat.opacity = envelope * (0.12 + agentPulse * 0.38);
-  });
-
-  // Subtle 3D Sphere Rotation (Smooth orbital spin)
-  patientSystem.sphereMesh.rotation.y += 0.0022;
-  patientSystem.sphereMesh.rotation.x = Math.sin(time * 0.0006) * 0.10;
-  swastikSystem.sphereMesh.rotation.y -= 0.0022;
-  swastikSystem.sphereMesh.rotation.x = Math.cos(time * 0.0007) * 0.10;
-
-  // Dynamic Gyroscopic Orbit Rings Precession
-  patientSystem.orbitGroup.rotation.z += 0.0045;
-  patientSystem.orbitGroup.rotation.x = 0.35 + Math.sin(time * 0.0007) * 0.12;
-  swastikSystem.orbitGroup.rotation.z -= 0.0045;
-  swastikSystem.orbitGroup.rotation.x = -0.35 + Math.cos(time * 0.0007) * 0.12;
+  // Update Electric Cyan Volumetric Plasma Nebula Orb (Image 2)
+  if (swastikSystem && swastikSystem.update) {
+    swastikSystem.update(time, agentPulse, isMobile);
+  }
 
   // Thinking Mode Indicator Animation
+  const thinkingDotsEl = $("aiThinkingDots");
   if (thinkingMode) {
     thinkingGroup.visible = true;
+    if (thinkingDotsEl) thinkingDotsEl.style.display = "inline-flex";
     thinkingGroup.rotation.z += 0.035;
     for (let i = 0; i < thinkingNodesCount; i++) {
       const angle = (i / thinkingNodesCount) * Math.PI * 2;
@@ -938,6 +1454,7 @@ function animate(time) {
     }
   } else {
     thinkingGroup.visible = false;
+    if (thinkingDotsEl) thinkingDotsEl.style.display = "none";
   }
 
   // Harmonic Floating Motion (Levitation & Natural Breathing)
@@ -950,8 +1467,8 @@ function animate(time) {
   const floatSwastikZ = Math.cos(time * 0.0014) * 0.35;
 
   // Audio Micro-Vibration & Physical Resonance
-  const vibP = userPulse > 0.05 ? (Math.random() - 0.5) * userPulse * 0.12 : 0;
-  const vibS = agentPulse > 0.05 ? (Math.random() - 0.5) * agentPulse * 0.12 : 0;
+  const vibP = userPulse > 0.05 ? (Math.random() - 0.5) * userPulse * 0.15 : 0;
+  const vibS = agentPulse > 0.05 ? (Math.random() - 0.5) * agentPulse * 0.15 : 0;
 
   patientSystem.group.position.set(
     leftTargetPos.x + floatPatientX,
@@ -964,29 +1481,31 @@ function animate(time) {
     rightTargetPos.z + floatSwastikZ
   );
 
-  // Update 3D Connecting Axis Filament
+  // Update 3D Connecting Axis Filament (connect outer rims, scaling dynamically with orb size)
+  const rOffsetP = patientSystem.baseRadius * 1.08 * patientSystem.group.scale.x;
+  const rOffsetS = swastikSystem.baseRadius * 1.08 * swastikSystem.group.scale.x;
   const axisPositions = axisLine.geometry.attributes.position.array;
-  axisPositions[0] = patientSystem.group.position.x;
+  axisPositions[0] = patientSystem.group.position.x + rOffsetP;
   axisPositions[1] = patientSystem.group.position.y;
   axisPositions[2] = patientSystem.group.position.z;
-  axisPositions[3] = swastikSystem.group.position.x;
+  axisPositions[3] = swastikSystem.group.position.x - rOffsetS;
   axisPositions[4] = swastikSystem.group.position.y;
   axisPositions[5] = swastikSystem.group.position.z;
   axisLine.geometry.attributes.position.needsUpdate = true;
   axisLine.computeLineDistances();
 
-  // Update 3D Helical Neural Synaptic Particle Stream (Directional Flow)
+  // Update 3D Helical Neural Synaptic Particle Stream (Connecting outer rims)
   const sPos = streamGeo.attributes.position.array;
   const sCol = streamGeo.attributes.color.array;
-  const p1 = patientSystem.group.position;
-  const p2 = swastikSystem.group.position;
+  const p1 = new THREE.Vector3(patientSystem.group.position.x + rOffsetP, patientSystem.group.position.y, patientSystem.group.position.z);
+  const p2 = new THREE.Vector3(swastikSystem.group.position.x - rOffsetS, swastikSystem.group.position.y, swastikSystem.group.position.z);
 
   // Stream flows according to speaker activity
   let flowDir = 1.0;
   if (speaking && userPulse < 0.05) {
     flowDir = -1.0; // flow from Swastik to Patient
   }
-  const streamSpeedBoost = isCommunicating ? 2.6 : 1.0;
+  const streamSpeedBoost = isCommunicating ? 3.4 : 1.0;
 
   for (let i = 0; i < STREAM_PARTICLE_COUNT; i++) {
     const pt = streamData[i];
@@ -995,32 +1514,43 @@ function animate(time) {
     if (pt.progress < 0.0) pt.progress += 1.0;
 
     const t = pt.progress;
-    const strandAngle = t * Math.PI * 4 + time * 0.003 + pt.strand * 2.094;
-    const helixRadius = (1.2 + Math.sin(t * Math.PI) * 1.5) * (isMobile ? 0.6 : 1.0);
+    // Multi-strand DNA helix with organic twist and voice expansion
+    const strandAngle = t * Math.PI * 6 + time * 0.0035 + pt.strand * 1.57 + pt.phase;
+    const voiceExpand = isCommunicating ? (1.0 + Math.max(userPulse, agentPulse) * 0.65) : 1.0;
+    const baseHelixR = (pt.isDust ? 0.9 : 1.5) + Math.sin(t * Math.PI) * 1.8;
+    const helixRadius = (baseHelixR * voiceExpand + pt.radiusJitter) * (isMobile ? 0.6 : 1.0);
 
     const baseX = p1.x + (p2.x - p1.x) * t;
     const baseY = p1.y + (p2.y - p1.y) * t;
     const baseZ = p1.z + (p2.z - p1.z) * t;
 
-    // Cross vector offsets for 3D helix
+    // Cross vector offsets for 3D helix with harmonic flutter
+    const flutter = Math.sin(time * 0.004 + t * 12.0) * 0.25;
     const idx = i * 3;
     if (isMobile) {
       sPos[idx] = baseX + Math.cos(strandAngle) * helixRadius;
-      sPos[idx + 1] = baseY;
+      sPos[idx + 1] = baseY + flutter;
       sPos[idx + 2] = baseZ + Math.sin(strandAngle) * helixRadius;
     } else {
       sPos[idx] = baseX;
-      sPos[idx + 1] = baseY + Math.sin(strandAngle) * helixRadius;
+      sPos[idx + 1] = baseY + Math.sin(strandAngle) * helixRadius + flutter;
       sPos[idx + 2] = baseZ + Math.cos(strandAngle) * helixRadius;
     }
 
-    // Color gradient: Gold near Patient -> Cyan near Swastik
-    sCol[idx] = THREE.MathUtils.lerp(0.96, 0.2, t);
-    sCol[idx + 1] = THREE.MathUtils.lerp(0.65, 0.95, t);
-    sCol[idx + 2] = THREE.MathUtils.lerp(0.15, 0.9, t);
+    // Color gradient & dynamic energy boost:
+    // Gold near Patient -> Cyan/Teal near Swastik, sparkling with voice surges!
+    const sparkle = Math.sin(time * 0.001 * pt.sparkleRate + pt.phase) * 0.3 + 0.7;
+    const surge = isCommunicating ? 0.25 : 0.0;
+    sCol[idx] = THREE.MathUtils.clamp(THREE.MathUtils.lerp(1.0, 0.15, t) * sparkle + surge, 0, 1);
+    sCol[idx + 1] = THREE.MathUtils.clamp(THREE.MathUtils.lerp(0.75, 0.95, t) * sparkle + surge, 0, 1);
+    sCol[idx + 2] = THREE.MathUtils.clamp(THREE.MathUtils.lerp(0.2, 1.0, t) * sparkle + surge, 0, 1);
   }
   streamGeo.attributes.position.needsUpdate = true;
   streamGeo.attributes.color.needsUpdate = true;
+
+  // Stream particle size reacts dynamically to speech energy!
+  streamMat.size = 3.4 + Math.max(userPulse, agentPulse) * 2.6;
+  streamMat.opacity = Math.min(1.0, 0.88 + Math.max(userPulse, agentPulse) * 0.12);
 
   // 3D Lightning Arc during Voice Communication
   if (isCommunicating && time - lastLightningTime > 320 + Math.random() * 650) {
@@ -1202,99 +1732,15 @@ function handleToolAction(cmd) {
     const slot = cmd.data.slot_time || "11:00 AM";
     const cat = cmd.data.category || "Consultation";
     const mode = cmd.data.consultation_mode || "Online";
-    waText.textContent = `${name} — your ${mode} appointment for ${cat} with Dr. Gunja Gupta is confirmed for tomorrow at ${slot}. Consultation fee ₹499.`;
+    waText.textContent = `${name} — your ${mode} appointment for ${cat} with Dr. Sharma is confirmed for tomorrow at ${slot}. Consultation fee ₹499.`;
 
     const waFormLink = $("waFormLink");
     if (waFormLink && cmd.data.form_url) waFormLink.href = cmd.data.form_url;
-    
+
     const waSendBtn = $("waSendBtn");
     if (waSendBtn && cmd.data.wa_url) {
       waSendBtn.href = cmd.data.wa_url;
       waSendBtn.style.display = "flex";
-    }
-
-    triggerShockwave(rightOrb);
-  } else if (cmd.action === "show_upi_payment" && cmd.data) {
-    setStage("UPI PAYMENT");
-    const upiCard = $("upiCard");
-    if (upiCard) upiCard.classList.add("visible");
-
-    const upiQrImg = $("upiQrImg");
-    const upiPayBtn = $("upiPayBtn");
-    const upiPayeeName = $("upiPayeeName");
-    const upiIdEl = $("upiId");
-    const upiAmountEl = $("upiAmount");
-
-    if (upiQrImg && cmd.data.qr_url) upiQrImg.src = cmd.data.qr_url;
-    if (upiPayBtn && cmd.data.upi_link) upiPayBtn.href = cmd.data.upi_link;
-    if (upiPayeeName && cmd.data.payee_name) upiPayeeName.textContent = cmd.data.payee_name;
-    if (upiIdEl && cmd.data.upi_id) upiIdEl.textContent = `UPI: ${cmd.data.upi_id}`;
-    if (upiAmountEl && cmd.data.amount) upiAmountEl.textContent = `₹${cmd.data.amount}`;
-
-    // Wire up the receipt upload handler
-    const receiptInput = $("receiptUpload");
-    if (receiptInput && !receiptInput._wired) {
-      receiptInput._wired = true;
-      receiptInput.addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const uploadFileName = $("uploadFileName");
-        if (uploadFileName) uploadFileName.textContent = file.name;
-
-        // Show pending status
-        const verifyStatus = $("upiVerifyStatus");
-        const verifyIcon = $("upiVerifyIcon");
-        const verifyText = $("upiVerifyText");
-        const verifyDetails = $("upiVerifyDetails");
-
-        if (verifyStatus) {
-          verifyStatus.style.display = "flex";
-          verifyStatus.className = "upi-verify-status pending";
-        }
-        if (verifyIcon) verifyIcon.textContent = "⏳";
-        if (verifyText) verifyText.textContent = "Verifying payment with AI...";
-        if (verifyDetails) verifyDetails.style.display = "none";
-
-        setStage("VERIFYING RECEIPT");
-
-        try {
-          const formData = new FormData();
-          formData.append("file", file);
-          const resp = await fetch("/upload-receipt", { method: "POST", body: formData });
-          const result = await resp.json();
-
-          if (result.verified) {
-            if (verifyStatus) verifyStatus.className = "upi-verify-status verified";
-            if (verifyIcon) verifyIcon.textContent = "✅";
-            if (verifyText) verifyText.textContent = "PAYMENT VERIFIED";
-            setStage("PAYMENT CONFIRMED");
-            triggerBookingBurst();
-          } else {
-            if (verifyStatus) verifyStatus.className = "upi-verify-status failed";
-            if (verifyIcon) verifyIcon.textContent = "❌";
-            if (verifyText) verifyText.textContent = "VERIFICATION FAILED";
-            setStage("PAYMENT ISSUE");
-          }
-
-          // Show details
-          if (verifyDetails) {
-            let detailsHTML = "";
-            if (result.status) detailsHTML += `Status: ${result.status}<br>`;
-            if (result.amount) detailsHTML += `Amount: ${result.amount}<br>`;
-            if (result.payee) detailsHTML += `Payee: ${result.payee}<br>`;
-            if (result.utr) detailsHTML += `UTR: ${result.utr}<br>`;
-            if (result.reason) detailsHTML += `${result.reason}`;
-            verifyDetails.innerHTML = detailsHTML;
-            verifyDetails.style.display = "block";
-          }
-        } catch (err) {
-          if (verifyStatus) verifyStatus.className = "upi-verify-status failed";
-          if (verifyIcon) verifyIcon.textContent = "❌";
-          if (verifyText) verifyText.textContent = "Upload failed — try again";
-          setStage("UPLOAD ERROR");
-        }
-      });
     }
 
     triggerShockwave(rightOrb);
@@ -1404,7 +1850,7 @@ function stopVoice() {
     voiceGain.gain.setValueAtTime(voiceGain.gain.value, now);
     voiceGain.gain.linearRampToValueAtTime(0.001, now + 0.035);
     setTimeout(() => {
-      activeSources.forEach((s) => { try { s.stop(); } catch {} });
+      activeSources.forEach((s) => { try { s.stop(); } catch { } });
       activeSources = [];
       nextStart = 0;
       speaking = false;
@@ -1414,7 +1860,7 @@ function stopVoice() {
       }
     }, 40);
   } else {
-    activeSources.forEach((s) => { try { s.stop(); } catch {} });
+    activeSources.forEach((s) => { try { s.stop(); } catch { } });
     activeSources = [];
     nextStart = 0;
     speaking = false;
@@ -1464,6 +1910,9 @@ function connect() {
 
 async function startMic() {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === "suspended") {
+    await audioCtx.resume();
+  }
   await audioCtx.audioWorklet.addModule("/pcm-processor.js");
 
   voiceGain = audioCtx.createGain();
@@ -1526,13 +1975,32 @@ function stopCall() {
 }
 
 async function startCall() {
-  isCallActive = true;
+  // Check for HTTPS / Secure Context when running in production
+  if (location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
+    alert("Microphone access requires a secure connection (HTTPS). Please open this site over HTTPS.");
+    return;
+  }
+
   callBtn.classList.add("in-call");
-  callBtnIcon.textContent = "⏹";
-  callBtnText.textContent = "End Call";
-  await startMic();
-  connect();
-  startCallTimer();
+  callBtnIcon.textContent = "⏳";
+  callBtnText.textContent = "Connecting...";
+
+  try {
+    await startMic();
+    connect();
+    isCallActive = true;
+    callBtnIcon.textContent = "⏹";
+    callBtnText.textContent = "End Call";
+    startCallTimer();
+  } catch (err) {
+    console.error("Failed to start voice call:", err);
+    stopCall();
+    if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+      alert("Microphone permission was denied. Please allow microphone access in your browser settings to speak with Swastik AI.");
+    } else {
+      alert("Could not start microphone: " + (err.message || err.name || "Unknown error"));
+    }
+  }
 }
 
 callBtn.addEventListener("click", () => {

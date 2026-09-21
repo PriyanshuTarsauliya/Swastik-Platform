@@ -2,8 +2,11 @@ services:
   - type: web
     name: swastik-voice-agent
     env: docker
-    plan: free # Change if you need more resources
+    plan: free # Upgrade to starter ($7/mo) for always-on + persistent disk
+    healthCheckPath: /health
     envVars:
+      - key: PORT
+        value: "8000"
       - key: GOOGLE_API_KEY
         sync: false # Set this securely in the Render dashboard
       - key: GOOGLE_GENAI_USE_VERTEXAI
@@ -12,7 +15,17 @@ services:
         value: "gemini-3.1-flash-live-preview"
       - key: LIVE_VOICE
         value: "Aoede"
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false
+      - key: TWILIO_CONTENT_SID
+        sync: false
       - key: UPI_ID
-        value: "6387831138-2@ibl"
+        sync: false
       - key: UPI_PAYEE_NAME
-        value: "Dr Gunja Gupta"
+        sync: false

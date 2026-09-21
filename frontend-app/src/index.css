@@ -1,0 +1,242 @@
+/* ══════════════════════════════════════════════════════════
+   Swastik AI — Design Tokens
+   Generated from realtimecolors.com palette
+   Dark premium theme with teal/gold accents
+   ══════════════════════════════════════════════════════════ */
+
+@import "tailwindcss";
+
+@theme {
+  /* ── Brand Colors (Realtime Colors Export) ── */
+  --color-text: #f8fafc;
+  --color-text-secondary: #cbd5e1;
+  --color-text-muted: #94a3b8;
+  --color-background: #04070c;
+  --color-background-card: #080e17;
+  --color-background-elevated: #0a1120;
+  --color-primary: #14c8b2;
+  --color-primary-light: #2dd4bf;
+  --color-primary-dim: rgba(20, 200, 178, 0.15);
+  --color-primary-glow: rgba(20, 200, 178, 0.55);
+  --color-secondary: #f5a623;
+  --color-secondary-light: #fbbf24;
+  --color-secondary-dim: rgba(245, 166, 35, 0.15);
+  --color-secondary-glow: rgba(245, 166, 35, 0.5);
+  --color-accent: #00e5ff;
+  --color-accent-dim: rgba(0, 229, 255, 0.15);
+  --color-danger: #ef4444;
+  --color-success: #22c55e;
+  --color-border-glass: rgba(255, 255, 255, 0.09);
+  --color-border-subtle: rgba(255, 255, 255, 0.05);
+
+  /* ── Typography ── */
+  --font-sans: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* ── Spacing Scale ── */
+  --spacing-18: 4.5rem;
+  --spacing-88: 22rem;
+  --spacing-128: 32rem;
+
+  /* ── Animations ── */
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-pulse-glow: pulse-glow 2s ease-in-out infinite;
+  --animate-gradient: gradient-shift 8s ease infinite;
+  --animate-slide-up: slide-up 0.6s ease-out;
+  --animate-slide-down: slide-down 0.4s ease-out;
+  --animate-fade-in: fade-in 0.5s ease-out;
+  --animate-scale-in: scale-in 0.3s ease-out;
+  --animate-border-beam: border-beam-anim var(--duration, 12s) infinite linear;
+  --animate-marquee: marquee var(--duration, 35s) linear infinite;
+  --animate-marquee-vertical: marquee-vertical var(--duration, 35s) linear infinite;
+}
+
+/* ── Keyframes ── */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes meteor {
+  0% {
+    transform: rotate(215deg) translateX(0);
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(215deg) translateX(-600px);
+    opacity: 0;
+  }
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100% - var(--gap, 1rem))); }
+}
+
+@keyframes marquee-vertical {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(-100% - var(--gap, 1rem))); }
+}
+
+@keyframes shimmer-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes border-beam-anim {
+  to { offset-distance: 100%; }
+}
+
+/* ── Inspira UI Animation Utilities ── */
+.animate-meteor {
+  animation: meteor 6s linear infinite;
+}
+
+.animate-marquee {
+  animation: marquee var(--duration, 35s) linear infinite;
+}
+
+.animate-marquee-reverse {
+  animation: marquee var(--duration, 35s) linear infinite reverse;
+}
+
+.animate-shimmer-spin {
+  animation: shimmer-spin var(--speed, 3s) linear infinite;
+}
+
+/* ── Base Styles ── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Custom Cursor Styles ── */
+@media (pointer: fine) {
+  body, a, button, [role="button"], .cursor-pointer {
+    cursor: none !important;
+  }
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.6;
+}
+
+::selection {
+  background: var(--color-primary-dim);
+  color: var(--color-primary-light);
+}
+
+/* ── Glassmorphism Utilities ── */
+.glass {
+  background-color: #080e17;
+  background: var(--color-background-card);
+  backdrop-filter: blur(20px) saturate(1.8);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8);
+  border: 1px solid var(--color-border-glass);
+}
+
+.glass-hover:hover {
+  background: rgba(8, 14, 23, 0.95);
+  border-color: var(--color-primary-dim);
+  box-shadow: 0 0 30px var(--color-primary-dim);
+}
+
+/* ── Gradient Text ── */
+.gradient-text {
+  color: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-accent) 50%, var(--color-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-gold {
+  color: var(--color-secondary);
+  background: linear-gradient(135deg, var(--color-secondary) 0%, var(--color-secondary-light) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Scrollbar Styling ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-text-muted);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
+}
+
+/* ── Animated Beam Dash ── */
+@keyframes beam-dash {
+  from { stroke-dashoffset: 32; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* ── Parallax Utility ── */
+.parallax-slow {
+  will-change: transform;
+  transition: transform 0.1s linear;
+}
+
+/* ── Section Divider Glow ── */
+.section-divider-glow {
+  background: linear-gradient(90deg, transparent, var(--color-primary-dim), transparent);
+  height: 1px;
+  border: none;
+}
+
+/* ── Smooth Focus States (Accessibility) ── */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

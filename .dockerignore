@@ -5,3 +5,18 @@ __pycache__
 *.pyc
 .env
 .env.example
+
+# Large media & non-essential files
+*.mp4
+.agents
+scratch
+tests
+docs
+IDEA.md
+IDEA_REVIEW.md
+FEATURES.md
+MISTAKES.md
+
+# Frontend node_modules (rebuilt in Docker)
+frontend-app/node_modules
+frontend-app/.gitignore
