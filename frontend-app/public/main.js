@@ -615,8 +615,8 @@ class FluidOrbEntity {
 // Instantiate Dual Orbs
 // Left Orb = Gold Patient (Calling In)
 // Right Orb = Cyan Swastik AI (Answering)
-const patientSystem = new FluidOrbEntity("gold", -5.2, 2.7);
-const swastikSystem = new FluidOrbEntity("cyan", 4.8, 2.7);
+const patientSystem = new FluidOrbEntity("gold", -6.5, 2.7);
+const swastikSystem = new FluidOrbEntity("cyan", 6.2, 2.7);
 scene.add(patientSystem.group);
 scene.add(swastikSystem.group);
 
@@ -853,13 +853,13 @@ function resize() {
     patientSystem._baseGroupScale = 0.75;
     swastikSystem._baseGroupScale = 0.75;
   } else if (isTablet) {
-    leftTargetPos.set(-visibleWidth * 0.20, 0, 0);
-    rightTargetPos.set(visibleWidth * 0.18, 0, 0);
+    leftTargetPos.set(-visibleWidth * 0.24, 0, 0);
+    rightTargetPos.set(visibleWidth * 0.22, 0, 0);
     patientSystem._baseGroupScale = 0.88;
     swastikSystem._baseGroupScale = 0.88;
   } else {
-    leftTargetPos.set(-visibleWidth * 0.19, 0, 0);
-    rightTargetPos.set(visibleWidth * 0.17, 0, 0);
+    leftTargetPos.set(-visibleWidth * 0.24, 0, 0);
+    rightTargetPos.set(visibleWidth * 0.22, 0, 0);
     patientSystem._baseGroupScale = 1.0;
     swastikSystem._baseGroupScale = 1.0;
   }
