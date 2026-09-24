@@ -11,22 +11,27 @@ import BorderBeam from '../components/inspira/BorderBeam'
 import CardSpotlight from '../components/inspira/CardSpotlight'
 import ShimmerButton from '../components/inspira/ShimmerButton'
 import Marquee from '../components/inspira/Marquee'
-import Meteors from '../components/inspira/Meteors'
 import NumberTicker from '../components/inspira/NumberTicker'
-import { BentoGrid, BentoCard } from '../components/inspira/BentoGrid'
+import { BentoCard } from '../components/inspira/BentoGrid'
 import VoiceSegmentation from '../components/VoiceSegmentation'
 import UseCasesSection from '../components/UseCasesSection'
 import AnalyticsPreview from '../components/AnalyticsPreview'
 import TrustSecuritySection from '../components/TrustSecuritySection'
 import LiveVoiceWidget from '../components/inspira/LiveVoiceWidget'
-import { GravityStarsBackground } from '../components/animate-ui'
 import { useLenis } from 'lenis/react'
 import SparklesText from '../components/inspira/SparklesText'
 import AuthModal from '../components/AuthModal'
 import { useAuth } from '../context/AuthContext'
-import ScrollReveal from '../components/inspira/ScrollReveal'
+import AnimeScrollReveal from '../components/inspira/AnimeScrollReveal'
+import AnimeScrollProgress from '../components/inspira/AnimeScrollProgress'
+import AnimeSplitText from '../components/inspira/AnimeSplitText'
+import AnimeParallax from '../components/inspira/AnimeParallax'
+import AnimeCounter from '../components/inspira/AnimeCounter'
+import AnimeCallFlow from '../components/inspira/AnimeCallFlow'
+import AnimeVoiceStudio from '../components/inspira/AnimeVoiceStudio'
+import AnimeHero from '../components/inspira/AnimeHero'
 import TextReveal from '../components/inspira/TextReveal'
-
+import { useAnimeNavSpy } from '../components/inspira/AnimeNavSpy'
 /* ════════════════════════════════════════════════════════════
    Swastik AI — Autonomous Voice Platform
    Design Objective & UX Strategy Implementation
@@ -96,6 +101,9 @@ function Navbar() {
   const navigate = useNavigate()
   const lenis = useLenis()
 
+  // Setup AnimeNavSpy
+  const activeSection = useAnimeNavSpy(['#solutions', '#use-cases', '#features', '#analytics', '#security', '#pricing']);
+
   const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, targetId: string) => {
     e.preventDefault()
     setMobileMenuOpen(false)
@@ -154,12 +162,12 @@ function Navbar() {
 
           {/* Navigation Links */}
           <div className="hidden md:flex items-center gap-7 text-sm font-medium text-[#94a3b8]">
-            <a href="#solutions" onClick={(e) => handleNavClick(e, '#solutions')} className="hover:text-[#14c8b2] transition-colors">Solutions</a>
-            <a href="#use-cases" onClick={(e) => handleNavClick(e, '#use-cases')} className="hover:text-[#14c8b2] transition-colors">Use Cases</a>
-            <a href="#features" onClick={(e) => handleNavClick(e, '#features')} className="hover:text-[#14c8b2] transition-colors">Features</a>
-            <a href="#analytics" onClick={(e) => handleNavClick(e, '#analytics')} className="hover:text-[#14c8b2] transition-colors">Analytics</a>
-            <a href="#security" onClick={(e) => handleNavClick(e, '#security')} className="hover:text-[#14c8b2] transition-colors">Safety</a>
-            <a href="#pricing" onClick={(e) => handleNavClick(e, '#pricing')} className="hover:text-[#14c8b2] transition-colors">Pricing</a>
+            <a href="#solutions" onClick={(e) => handleNavClick(e, '#solutions')} className={`transition-colors ${activeSection === '#solutions' ? 'text-[#14c8b2]' : 'hover:text-[#14c8b2]'}`}>Solutions</a>
+            <a href="#use-cases" onClick={(e) => handleNavClick(e, '#use-cases')} className={`transition-colors ${activeSection === '#use-cases' ? 'text-[#14c8b2]' : 'hover:text-[#14c8b2]'}`}>Use Cases</a>
+            <a href="#features" onClick={(e) => handleNavClick(e, '#features')} className={`transition-colors ${activeSection === '#features' ? 'text-[#14c8b2]' : 'hover:text-[#14c8b2]'}`}>Features</a>
+            <a href="#analytics" onClick={(e) => handleNavClick(e, '#analytics')} className={`transition-colors ${activeSection === '#analytics' ? 'text-[#14c8b2]' : 'hover:text-[#14c8b2]'}`}>Analytics</a>
+            <a href="#security" onClick={(e) => handleNavClick(e, '#security')} className={`transition-colors ${activeSection === '#security' ? 'text-[#14c8b2]' : 'hover:text-[#14c8b2]'}`}>Safety</a>
+            <a href="#pricing" onClick={(e) => handleNavClick(e, '#pricing')} className={`transition-colors ${activeSection === '#pricing' ? 'text-[#14c8b2]' : 'hover:text-[#14c8b2]'}`}>Pricing</a>
             <a href="mailto:pg7560259@gmail.com" className="hover:text-[#14c8b2] transition-colors flex items-center gap-1">Contact</a>
           </div>
 
@@ -358,109 +366,13 @@ function Navbar() {
   )
 }
 
-// ── Hero Section ──
-function Hero() {
-  return (
-    <section className="relative min-h-[92vh] flex flex-col items-center justify-center pt-32 pb-16 px-6 overflow-hidden">
-      {/* Animate UI Interactive Gravity Stars Background */}
-      <div className="absolute inset-0 z-0 opacity-70 pointer-events-auto">
-        <GravityStarsBackground
-          starsCount={85}
-          starsSize={2.2}
-          starsOpacity={0.65}
-          glowIntensity={16}
-          movementSpeed={0.28}
-          mouseInfluence={140}
-          mouseGravity="attract"
-          gravityStrength={85}
-          className="w-full h-full text-[#14c8b2]"
-        />
-      </div>
 
-      {/* Inspira UI Meteors Falling Stars */}
-      <Meteors count={25} />
-
-      {/* Radial glow aura */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[720px] h-[720px] bg-[rgba(20,200,178,0.09)] rounded-full blur-[140px] pointer-events-none" />
-
-      <div className="relative z-10 max-w-5xl mx-auto text-center">
-        {/* Animated Badge with Border Beam */}
-        <ScrollReveal delay={100} duration={800} direction="down" distance={20}>
-          <div className="relative inline-flex items-center gap-2 px-5 py-2 rounded-full overflow-hidden border border-[rgba(20,200,178,0.3)] bg-[rgba(8,14,23,0.8)] text-xs font-semibold text-[#14c8b2] mb-8 shadow-[0_0_25px_rgba(20,200,178,0.2)]">
-            <BorderBeam size={100} duration={6} colorFrom="#14c8b2" colorTo="#f5a623" />
-            <span className="flex h-2 w-2 rounded-full bg-[#14c8b2] animate-ping" />
-            <span>Real-Time Voice Agents & Neural Audio Studio • Sub-400ms Turnaround</span>
-          </div>
-        </ScrollReveal>
-
-        {/* Main Headline with Inspira SparklesText + TextReveal */}
-        <ScrollReveal delay={300} duration={900}>
-          <h1 className="text-4xl sm:text-6xl md:text-7xl font-black tracking-tight leading-[1.08] mb-6 text-white">
-            <TextReveal text="Never Miss a Patient Call." stagger={50} blur={14} triggerOnScroll={false} />
-            <br />
-            <TextReveal text="The Autonomous" stagger={50} blur={14} triggerOnScroll={false} />{' '}
-            <SparklesText
-              text="Voice Infrastructure"
-              className="gradient-text font-black"
-              sparklesCount={8}
-              colors={{ first: '#14C8B2', second: '#00E5FF' }}
-            />
-            <br />
-            <TextReveal text="with Swastik AI." stagger={50} blur={14} triggerOnScroll={false} />
-          </h1>
-        </ScrollReveal>
-
-        {/* Subtitle */}
-        <ScrollReveal delay={500} duration={800}>
-          <p className="text-lg sm:text-xl text-[#94a3b8] max-w-3xl mx-auto mb-10 leading-relaxed">
-            Deploy conversational <strong className="text-white">AI Voice Agents</strong> for 24/7 inbound clinic reception and proactive patient recalls — paired with an expressive <strong className="text-white">Voice Generation Studio</strong> that clones your doctors with human empathy.
-          </p>
-        </ScrollReveal>
-
-        {/* High-Intent Early CTAs */}
-        <ScrollReveal delay={700} duration={700}>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-10">
-            <a
-              href="#solutions"
-              className="inline-flex items-center justify-center gap-2 py-4 px-8 rounded-full text-base font-bold bg-gradient-to-r from-[#14c8b2] to-[#00e5ff] text-[#04070c] shadow-[0_0_30px_rgba(20,200,178,0.4)] hover:shadow-[0_0_40px_rgba(0,229,255,0.6)] transition-all duration-300 transform hover:-translate-y-0.5"
-            >
-              <Headphones className="w-5 h-5 text-[#04070c]" />
-              <span>Explore Voice Solutions</span>
-              <ChevronRight className="w-4 h-4 text-[#04070c]" />
-            </a>
-
-            <a
-              href="/console/index.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 px-7 py-4 rounded-full border border-white/15 bg-white/5 text-sm font-semibold text-white hover:border-[#14c8b2] hover:bg-[rgba(20,200,178,0.1)] transition-all duration-300 backdrop-blur-xl"
-            >
-              <PhoneCall className="w-4 h-4 text-[#14c8b2]" />
-              <span>Launch Live Audio Console</span>
-              <ExternalLink className="w-4 h-4 text-[#94a3b8]" />
-            </a>
-          </div>
-        </ScrollReveal>
-
-        {/* Trust Badges */}
-        <ScrollReveal delay={900} duration={600}>
-          <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-[#94a3b8]">
-            <span className="flex items-center gap-1.5"><Shield className="w-4 h-4 text-[#14c8b2]" /> HIPAA-Compliant Pipelines</span>
-            <span className="flex items-center gap-1.5"><Zap className="w-4 h-4 text-[#f5a623]" /> &lt;380ms Gemini Live Latency</span>
-            <span className="flex items-center gap-1.5"><Globe className="w-4 h-4 text-[#00e5ff]" /> Fluent Hinglish, Hindi & English</span>
-            <span className="flex items-center gap-1.5"><UserCheck className="w-4 h-4 text-[#22c55e]" /> Instant Human Escalation</span>
-          </div>
-        </ScrollReveal>
-      </div>
-    </section>
-  )
-}
 
 // ── Interactive Live Voice Demo Section ──
 function LiveVoiceSection() {
   return (
     <section id="live-demo" className="relative py-12 px-6 overflow-hidden">
-      <ScrollReveal>
+      <AnimeScrollReveal direction="up" distance={30} duration={800} ease="outExpo">
         <div className="max-w-4xl mx-auto text-center mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[rgba(20,200,178,0.3)] bg-[rgba(20,200,178,0.08)] text-xs font-semibold text-[#14c8b2] mb-3">
             <Sparkles className="w-3.5 h-3.5" />
@@ -473,153 +385,91 @@ function LiveVoiceSection() {
             Speak with your microphone or try common clinical inquiries below. Experience real-time sub-400ms Hinglish responses and automatic slot booking.
           </p>
         </div>
-      </ScrollReveal>
+      </AnimeScrollReveal>
 
-      <ScrollReveal delay={200}>
+      <AnimeScrollReveal delay={150} direction="zoom" scale={0.94} duration={850} ease="outBack">
         <LiveVoiceWidget />
-      </ScrollReveal>
+      </AnimeScrollReveal>
     </section>
   )
 }
 
-// ── Live Stats Banner with Inspira UI Number Ticker ──
+// ── Live Stats Banner with Anime.js Staggered Ticker ──
 function StatsBanner() {
   return (
     <section className="relative border-y border-white/10 bg-[rgba(8,14,23,0.6)] py-12 px-6 backdrop-blur-md">
-      <div className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-        <ScrollReveal delay={0} direction="up" distance={30} duration={600}>
-          <div>
-            <div className="text-3xl sm:text-4xl md:text-5xl font-black text-white flex items-center justify-center">
-              <NumberTicker value={99.4} decimalPlaces={1} suffix="%" />
-            </div>
-            <p className="mt-2 text-xs sm:text-sm font-medium text-[#94a3b8]">First Call Resolution</p>
+      <AnimeScrollReveal
+        childSelector="[data-stat]"
+        staggerMs={110}
+        direction="up"
+        distance={35}
+        className="max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center"
+      >
+        <div data-stat>
+          <div className="text-3xl sm:text-4xl md:text-5xl font-black text-white flex items-center justify-center">
+            <AnimeCounter to={99.4} decimals={1} suffix="%" />
           </div>
-        </ScrollReveal>
+          <p className="mt-2 text-xs sm:text-sm font-medium text-[#94a3b8]">First Call Resolution</p>
+        </div>
 
-        <ScrollReveal delay={120} direction="up" distance={30} duration={600}>
-          <div>
-            <div className="text-3xl sm:text-4xl md:text-5xl font-black text-[#14c8b2] flex items-center justify-center">
-              <NumberTicker value={380} suffix="ms" prefix="<" />
-            </div>
-            <p className="mt-2 text-xs sm:text-sm font-medium text-[#94a3b8]">Voice Turnaround Latency</p>
+        <div data-stat>
+          <div className="text-3xl sm:text-4xl md:text-5xl font-black text-[#14c8b2] flex items-center justify-center">
+            <AnimeCounter to={380} prefix="<" suffix="ms" />
           </div>
-        </ScrollReveal>
+          <p className="mt-2 text-xs sm:text-sm font-medium text-[#94a3b8]">Voice Turnaround Latency</p>
+        </div>
 
-        <ScrollReveal delay={240} direction="up" distance={30} duration={600}>
-          <div>
-            <div className="text-3xl sm:text-4xl md:text-5xl font-black text-[#f5a623] flex items-center justify-center">
-              <NumberTicker value={24500} suffix="+" />
-            </div>
-            <p className="mt-2 text-xs sm:text-sm font-medium text-[#94a3b8]">Patient Consultations Handled</p>
+        <div data-stat>
+          <div className="text-3xl sm:text-4xl md:text-5xl font-black text-[#f5a623] flex items-center justify-center">
+            <AnimeCounter to={24500} suffix="+" />
           </div>
-        </ScrollReveal>
+          <p className="mt-2 text-xs sm:text-sm font-medium text-[#94a3b8]">Patient Consultations Handled</p>
+        </div>
 
-        <ScrollReveal delay={360} direction="up" distance={30} duration={600}>
-          <div>
-            <div className="text-3xl sm:text-4xl md:text-5xl font-black text-[#00e5ff] flex items-center justify-center">
-              <span>24/7</span>
-            </div>
-            <p className="mt-2 text-xs sm:text-sm font-medium text-[#94a3b8]">Zero Receptionist Downtime</p>
+        <div data-stat>
+          <div className="text-3xl sm:text-4xl md:text-5xl font-black text-[#00e5ff] flex items-center justify-center">
+            <span>24/7</span>
           </div>
-        </ScrollReveal>
-      </div>
+          <p className="mt-2 text-xs sm:text-sm font-medium text-[#94a3b8]">Zero Receptionist Downtime</p>
+        </div>
+      </AnimeScrollReveal>
     </section>
   )
 }
 
-// ── Doctor & Clinic Infinite Marquee ──
-function DoctorMarquee() {
-  const clinics = [
-    { name: "Dr. Sharma's Clinic", spec: "Family Health & Holistic Care", city: "Delhi NCR" },
-    { name: "Aarogya Dental Hospital", spec: "Oral & Maxillofacial Care", city: "Bhopal" },
-    { name: "Sanjeevani Orthopedic Care", spec: "Joints & Sports Medicine", city: "Indore" },
-    { name: "Swaroop Multispecialty Clinic", spec: "Internal Medicine & ENT", city: "Kanpur" },
-    { name: "Apex Heart & Diabetes Center", spec: "Cardiology & Diabetology", city: "Lucknow" },
-    { name: "CarePoint Pediatrics Center", spec: "Child Wellness & Neonatal", city: "Jaipur" },
-    { name: "Metro Health Polyclinic", spec: "Dermatology & Cosmetology", city: "Delhi NCR" },
-  ]
-
-  const liveFeeds = [
-    "⚡ Appointment confirmed with Dr. Sharma (Tomorrow 5:30 PM)",
-    "💬 WhatsApp intake form sent to +91 98260 ••••",
-    "📋 Patient intake form confirmed & synced with EHR",
-    "🎙️ Hindi-speaking patient query resolved in 18 seconds",
-    "📅 Rescheduled slot from Friday to Saturday 11:00 AM",
-    "🚀 0 missed calls recorded across all partner clinics today",
-  ]
-
-  return (
-    <section className="relative py-14 px-6 overflow-hidden">
-      <div className="max-w-6xl mx-auto text-center mb-8">
-        <p className="text-xs font-bold uppercase tracking-widest text-[#94a3b8]">
-          Trusted by Top Doctors and Clinics Across India
-        </p>
-      </div>
-
-      {/* Marquee Row 1: Clinics */}
-      <Marquee pauseOnHover duration="45s" gap="1.5rem">
-        {clinics.map((clinic, idx) => (
-          <div
-            key={idx}
-            className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(8,14,23,0.85)] px-5 py-3.5 backdrop-blur-xl shadow-[0_4px_20px_rgba(0,0,0,0.5)] transition-all hover:border-[rgba(20,200,178,0.4)]"
-          >
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[rgba(20,200,178,0.15)] text-[#14c8b2]">
-              <Shield className="h-4 w-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-sm font-bold text-white">{clinic.name}</span>
-                <CheckCircle2 className="h-3.5 w-3.5 text-[#14c8b2]" />
-              </div>
-              <span className="text-xs text-[#94a3b8]">
-                {clinic.spec} • <strong className="text-white/80">{clinic.city}</strong>
-              </span>
-            </div>
-          </div>
-        ))}
-      </Marquee>
-
-      {/* Marquee Row 2: Live Activity Ticker (Reverse Direction) */}
-      <div className="mt-4">
-        <Marquee reverse pauseOnHover duration="40s" gap="1.5rem">
-          {liveFeeds.map((feed, idx) => (
-            <div
-              key={idx}
-              className="flex items-center gap-2 rounded-full border border-white/10 bg-[rgba(4,7,12,0.7)] px-4 py-2 text-xs font-medium text-[#94a3b8] backdrop-blur-md"
-            >
-              <Activity className="h-3.5 w-3.5 text-[#00e5ff]" />
-              <span>{feed}</span>
-            </div>
-          ))}
-        </Marquee>
-      </div>
-    </section>
-  )
-}
+import AnimeTimelineDemoStrip from '../components/inspira/AnimeTimelineDemoStrip'
 
 // ── Bento Grid Features Section ──
 function Features() {
   return (
     <section id="features" className="relative py-24 px-6">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-16">
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full border border-[rgba(20,200,178,0.3)] bg-[rgba(20,200,178,0.1)] text-xs font-semibold text-[#14c8b2] mb-4">
-            <Zap className="w-3.5 h-3.5" /> High-Performance Features
-          </span>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-white mb-4">
-            An Autonomous Front Desk Built with Swastik AI
-          </h2>
-          <p className="text-[#94a3b8] max-w-xl mx-auto text-base">
-            From inbound patient triage to automated slot booking and payment collection, Swastik AI handles the entire reception workflow.
-          </p>
-        </div>
+        <AnimeScrollReveal direction="up" distance={30} duration={750} ease="outExpo">
+          <div className="text-center mb-16">
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full border border-[rgba(20,200,178,0.3)] bg-[rgba(20,200,178,0.1)] text-xs font-semibold text-[#14c8b2] mb-4">
+              <Zap className="w-3.5 h-3.5" /> High-Performance Features
+            </span>
+            <h2 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-white mb-4">
+              An Autonomous Front Desk Built with Swastik AI
+            </h2>
+            <p className="text-[#94a3b8] max-w-xl mx-auto text-base">
+              From inbound patient triage to automated slot booking and payment collection, Swastik AI handles the entire reception workflow.
+            </p>
+          </div>
+        </AnimeScrollReveal>
 
-        {/* Bento Grid Layout from Inspira UI */}
-        <BentoGrid>
+        {/* Bento Grid Layout with Anime.js Staggered Cascading Reveal */}
+        <AnimeScrollReveal
+          childSelector=".bento-card"
+          staggerMs={85}
+          direction="up"
+          distance={45}
+          className="grid w-full grid-cols-1 md:grid-cols-3 gap-5 auto-rows-[22rem]"
+        >
           {/* Card 1: Real-Time Voice with Live Interruption (Span 2) */}
           <BentoCard
             name="Sub-Second Conversational Voice AI"
-            className="md:col-span-2"
+            className="md:col-span-2 bento-card"
             Icon={Mic}
             badge="Gemini 2.0 Flash"
             description="True bidirectional audio streaming allows callers to interrupt, ask clarifying questions, or change their mind mid-sentence without robotic lag or awkward delays."
@@ -641,7 +491,7 @@ function Features() {
           {/* Card 2: WhatsApp CRM Automation (Span 1) */}
           <BentoCard
             name="Instant WhatsApp Integration"
-            className="md:col-span-1"
+            className="md:col-span-1 bento-card"
             Icon={MessageCircle}
             badge="Twilio API"
             description="Automatically dispatches appointment summaries, doctor clinic directions, intake questionnaires, and prescription refill links straight to patient WhatsApp."
@@ -652,7 +502,7 @@ function Features() {
           {/* Card 3: Instant Human Handoff & Triage (Span 1) */}
           <BentoCard
             name="Instant Human Handoff"
-            className="md:col-span-1"
+            className="md:col-span-1 bento-card"
             Icon={UserCheck}
             badge="Clinical Safety"
             description="Intelligently detects complex or acute queries and executes an instant warm transfer to duty clinic staff with full audio transcripts."
@@ -663,7 +513,7 @@ function Features() {
           {/* Card 4: Hinglish, Hindi & English Fluency (Span 2) */}
           <BentoCard
             name="Natural Hinglish & Regional Dialects"
-            className="md:col-span-2"
+            className="md:col-span-2 bento-card"
             Icon={Globe}
             badge="Multi-Lingual"
             description="Indian patients don't speak rigid corporate English. Swastik AI naturally switches between Hindi, English, and everyday colloquial Hinglish with empathetic medical phrasing."
@@ -680,7 +530,7 @@ function Features() {
           {/* Card 5: 24/7 Zero Call Drops (Span 2 - Wide) */}
           <BentoCard
             name="24/7 Zero Call Abandonment"
-            className="md:col-span-2"
+            className="md:col-span-2 bento-card"
             Icon={PhoneCall}
             badge="99.9% Uptime"
             description="Handles 50+ concurrent patient inquiries simultaneously during peak clinic hours, festival holidays, and emergency evening hours with zero busy signals."
@@ -691,14 +541,14 @@ function Features() {
           {/* Card 6: Doctor Schedule & EHR Calendar Sync (Span 1 - Narrow) */}
           <BentoCard
             name="Smart Calendar & EHR Slot Sync"
-            className="md:col-span-1"
+            className="md:col-span-1 bento-card"
             Icon={Calendar}
             badge="Live Sync"
             description="Directly syncs with doctor schedules and Google Calendar to avoid double-bookings and respect breaks."
             cta="Explore calendar integration"
             href="#use-cases"
           />
-        </BentoGrid>
+        </AnimeScrollReveal>
       </div>
     </section>
   )
@@ -775,9 +625,15 @@ function Pricing() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+        <AnimeScrollReveal
+          childSelector=".pricing-card"
+          staggerMs={110}
+          direction="up"
+          distance={40}
+          className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch"
+        >
           {plans.map((plan, idx) => (
-            <div key={idx} className="relative flex flex-col">
+            <div key={idx} className="relative flex flex-col pricing-card">
               {plan.highlighted ? (
                 <div className="relative flex flex-col h-full rounded-2xl border border-[rgba(20,200,178,0.5)] bg-[rgba(8,14,23,0.95)] p-8 shadow-[0_0_50px_rgba(20,200,178,0.2)]">
                   {/* Inspira UI Border Beam on the Pro Plan */}
@@ -850,7 +706,7 @@ function Pricing() {
               )}
             </div>
           ))}
-        </div>
+        </AnimeScrollReveal>
       </div>
     </section>
   )
@@ -897,39 +753,53 @@ function Testimonials() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {reviews.map((rev, idx) => (
-            <CardSpotlight
-              key={idx}
-              gradientColor="rgba(20, 200, 178, 0.12)"
-              className="p-8 flex flex-col justify-between"
-            >
-              <div>
-                <div className="flex gap-1 mb-4">
-                  {Array.from({ length: rev.rating }).map((_, rIdx) => (
-                    <Star key={rIdx} className="h-4 w-4 fill-[#f5a623] text-[#f5a623]" />
-                  ))}
-                </div>
-                <p className="text-sm leading-relaxed text-[#f8fafc] italic mb-6">
-                  &quot;{rev.text}&quot;
-                </p>
-              </div>
-
-              <div className="border-t border-white/10 pt-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-[#14c8b2] to-[#00e5ff] font-bold text-[#04070c]">
-                    {rev.name.split(' ')[1]?.[0] || 'D'}
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white">{rev.name}</h3>
-                    <p className="text-xs text-[#14c8b2] font-medium">{rev.role}</p>
-                    <p className="text-xs text-[#94a3b8]">{rev.clinic}</p>
-                  </div>
-                </div>
-              </div>
-            </CardSpotlight>
-          ))}
+        {/* Add AnimeSplitText for Scrub Effect right above the testimonials */}
+        <div className="mb-20 text-center max-w-4xl mx-auto">
+          <AnimeSplitText as="p" mode="scrub" className="text-4xl md:text-5xl font-bold text-white">
+            Every patient heard. Every call answered.
+          </AnimeSplitText>
         </div>
+
+        <AnimeScrollReveal
+          childSelector=".testimonial-card"
+          staggerMs={110}
+          direction="up"
+          distance={35}
+          className="grid grid-cols-1 md:grid-cols-3 gap-6"
+        >
+          {reviews.map((rev, idx) => (
+            <div key={idx} className="testimonial-card h-full">
+              <CardSpotlight
+                gradientColor="rgba(20, 200, 178, 0.12)"
+                className="p-8 flex flex-col justify-between h-full"
+              >
+                <div>
+                  <div className="flex gap-1 mb-4">
+                    {Array.from({ length: rev.rating }).map((_, rIdx) => (
+                      <Star key={rIdx} className="h-4 w-4 fill-[#f5a623] text-[#f5a623]" />
+                    ))}
+                  </div>
+                  <p className="text-sm leading-relaxed text-[#f8fafc] italic mb-6">
+                    &quot;{rev.text}&quot;
+                  </p>
+                </div>
+
+                <div className="border-t border-white/10 pt-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-[#14c8b2] to-[#00e5ff] font-bold text-[#04070c]">
+                      {rev.name.split(' ')[1]?.[0] || 'D'}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-white">{rev.name}</h3>
+                      <p className="text-xs text-[#14c8b2] font-medium">{rev.role}</p>
+                      <p className="text-xs text-[#94a3b8]">{rev.clinic}</p>
+                    </div>
+                  </div>
+                </div>
+              </CardSpotlight>
+            </div>
+          ))}
+        </AnimeScrollReveal>
       </div>
     </section>
   )
@@ -939,8 +809,9 @@ function Testimonials() {
 function CTABanner() {
   return (
     <section className="relative py-24 px-6 overflow-hidden">
-      <div className="relative max-w-5xl mx-auto rounded-3xl border border-[rgba(20,200,178,0.3)] bg-[rgba(8,14,23,0.9)] p-10 sm:p-16 text-center backdrop-blur-2xl shadow-[0_20px_70px_rgba(20,200,178,0.15)]">
-        <BorderBeam size={320} duration={10} colorFrom="#14c8b2" colorTo="#f5a623" />
+      <AnimeScrollReveal direction="zoom" scale={0.92} distance={0} duration={850} ease="outBack">
+        <div className="relative max-w-5xl mx-auto rounded-3xl border border-[rgba(20,200,178,0.3)] bg-[rgba(8,14,23,0.9)] p-10 sm:p-16 text-center backdrop-blur-2xl shadow-[0_20px_70px_rgba(20,200,178,0.15)]">
+          <BorderBeam size={320} duration={10} colorFrom="#14c8b2" colorTo="#f5a623" />
 
         <div className="relative z-10 max-w-2xl mx-auto">
           <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(20,200,178,0.3)] bg-[rgba(20,200,178,0.1)] px-4 py-1.5 text-xs font-semibold text-[#14c8b2] mb-6">
@@ -978,6 +849,7 @@ function CTABanner() {
           </div>
         </div>
       </div>
+    </AnimeScrollReveal>
     </section>
   )
 }
@@ -1068,17 +940,20 @@ function Footer() {
 // ── Main Component ──
 export default function Landing() {
   return (
-    <div className="relative min-h-screen bg-[#04070c] text-[#f8fafc] overflow-x-hidden selection:bg-[rgba(20,200,178,0.3)] selection:text-[#14c8b2]">
+    <div className="relative min-h-screen bg-[#04070c] text-[#f8fafc] overflow-x-clip selection:bg-[rgba(20,200,178,0.3)] selection:text-[#14c8b2]">
+      <AnimeScrollProgress />
       <OrbBackground />
       <Navbar />
       <main>
-        <Hero />
+        <AnimeHero />
         <LiveVoiceSection />
         <StatsBanner />
-        <DoctorMarquee />
+        <AnimeTimelineDemoStrip />
         <VoiceSegmentation />
+        <AnimeVoiceStudio />
         <UseCasesSection />
         <Features />
+        <AnimeCallFlow />
         <AnalyticsPreview />
         <Pricing />
         <TrustSecuritySection />
