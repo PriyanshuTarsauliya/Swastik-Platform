@@ -38,6 +38,19 @@ let silentSink = null;
 let speechFrameCount = 0;
 const BARGE_THRESHOLD = 0.06;
 
+// Noise Cancellation & VAD State
+let aecNode = null;
+let agcNode = null;
+let noiseSuppressorNode = null;
+let speakerMaskNode = null;
+let currentVADProbability = 0;
+let currentSNR = 0;
+let currentNoiseFloor = 0;
+let ncEnabled = true; // Noise cancellation toggle
+
+// Graceful Degradation State
+let lowSNRFrameCount = 0;
+
 // Call timer state
 let callStartTime = 0;
 let callTimerInterval = null;
@@ -148,6 +161,13 @@ function setSubtitles(role, text) {
     }
   }
 }
+
+// Phase 3: Telemetry State
+let telemetryInterval = null;
+
+// Phase 3: Jitter Buffer
+let jitterBuffer = [];
+let JITTER_BUFFER_SIZE = 2; // 2 frames lookahead
 
 // ------------------------------------------------------------------
 // Live Clock & Call Timer
@@ -973,7 +993,7 @@ function animate(time) {
         setStage(nextSim.stage);
         setSubtitles(nextSim.speaker, nextSim.hindi);
 
-        if (nextSim.showCalendar && calendarCard) {
+        if (nextSim.showCalendar && calendarCard && !calendarCard.classList.contains("dismissed")) {
           calendarCard.classList.add("visible");
         }
         if (nextSim.showBooking) {
@@ -984,7 +1004,7 @@ function animate(time) {
           }
           triggerBookingBurst();
         }
-        if (nextSim.showWhatsApp && waCard) {
+        if (nextSim.showWhatsApp && waCard && !waCard.classList.contains("dismissed")) {
           waCard.classList.add("visible");
         }
       }
@@ -1240,11 +1260,17 @@ function animate(time) {
 function handleToolAction(cmd) {
   if (cmd.action === "show_calendar") {
     setStage("READING REAL SLOTS");
-    if (calendarCard) calendarCard.classList.add("visible");
+    if (calendarCard) {
+      calendarCard.classList.remove("dismissed");
+      calendarCard.classList.add("visible");
+    }
     if (cmd.slots && slotsContainer) updateSlotsUI(cmd.slots);
   } else if (cmd.action === "booking_confirmed") {
     setStage("WRITTEN TO THE CALENDAR");
-    if (calendarCard) calendarCard.classList.add("visible");
+    if (calendarCard) {
+      calendarCard.classList.remove("dismissed");
+      calendarCard.classList.add("visible");
+    }
 
     const mode = (cmd.data && cmd.data.consultation_mode) ? cmd.data.consultation_mode.toUpperCase() : "ONLINE";
     if (cmd.slots && slotsContainer) updateSlotsUI(cmd.slots);
@@ -1257,7 +1283,10 @@ function handleToolAction(cmd) {
     triggerBookingBurst();
   } else if (cmd.action === "whatsapp_send" && cmd.data) {
     setStage("CONFIRMATION ON WHATSAPP");
-    if (waCard) waCard.classList.add("visible");
+    if (waCard) {
+      waCard.classList.remove("dismissed");
+      waCard.classList.add("visible");
+    }
     const name = cmd.data.patient_name || "Patient";
     const slot = cmd.data.slot_time || "11:00 AM";
     const cat = cmd.data.category || "Consultation";
@@ -1345,6 +1374,11 @@ function playVoice(buf) {
   const ab = audioCtx.createBuffer(1, f32.length, 24000);
   ab.getChannelData(0).set(f32);
 
+  // Send a copy to the AEC worklet as the far-end reference signal
+  if (aecNode) {
+    aecNode.port.postMessage({ reference: new Float32Array(f32) });
+  }
+
   const src = audioCtx.createBufferSource();
   src.buffer = ab;
   src.connect(voiceGain);
@@ -1390,6 +1424,11 @@ function stopVoice() {
     activeSources = [];
     nextStart = 0;
     speaking = false;
+    
+    if (telemetryInterval) {
+      clearInterval(telemetryInterval);
+      telemetryInterval = null;
+    }
   }
 }
 
@@ -1435,44 +1474,107 @@ function connect() {
 }
 
 async function startMic() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === "suspended") {
-    await audioCtx.resume();
-  }
-  await audioCtx.audioWorklet.addModule("/pcm-processor.js");
+  if (stream) return;
+  try {
+    // 3B. WSS Enforcement + Consent
+    console.log("%c🔒 PRIVACY NOTICE: This call is processed by AI. Your voice is used only for this conversation and not stored.", "color: #10B981; font-weight: bold; font-size: 12px;");
 
-  voiceGain = audioCtx.createGain();
-  voiceGain.gain.setValueAtTime(1, audioCtx.currentTime);
-  voiceGain.connect(audioCtx.destination);
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
+    
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    if (audioCtx.state === "suspended") {
+      await audioCtx.resume();
+    }
+    
+    const source = audioCtx.createMediaStreamSource(stream);
 
-  micStream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-      googEchoCancellation: true,
-      googAutoGainControl: true,
-      googNoiseSuppression: true,
-      googHighpassFilter: true,
-    },
-  });
-  const source = audioCtx.createMediaStreamSource(micStream);
+    // 3D. AudioWorklet Fallback
+    if (!audioCtx.audioWorklet) {
+      console.warn("AudioWorklet not supported! Falling back to ScriptProcessorNode (degraded performance).");
+      // Basic fallback implementation for older browsers
+      const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+      scriptNode.onaudioprocess = (e) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        const outLen = Math.floor(inputData.length / 3);
+        const pcm16 = new Int16Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          let s = Math.max(-1, Math.min(1, inputData[i * 3]));
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        ws.send(pcm16.buffer);
+      };
+      source.connect(scriptNode);
+      scriptNode.connect(audioCtx.destination);
+      return;
+    }
 
-  // Hardware-accelerated DSP Speech Filter Chain:
-  // 1. Highpass: Cuts low frequency fan rumble, room vibrations, breathing pops (<85Hz)
+    // Register all audio worklet processors
+    await audioCtx.audioWorklet.addModule("/pcm-processor.js");
+    await audioCtx.audioWorklet.addModule("/noise-suppressor-worklet.js");
+    await audioCtx.audioWorklet.addModule("/aec-processor.js");
+    await audioCtx.audioWorklet.addModule("/agc-processor.js");
+    await audioCtx.audioWorklet.addModule("/speaker-mask-processor.js");
+
+    voiceGain = audioCtx.createGain();
+    voiceGain.gain.setValueAtTime(1, audioCtx.currentTime);
+    voiceGain.connect(audioCtx.destination);
+
+  // ── Enhanced DSP Speech Filter Chain ──────────────────────────
+  //
+  // Pipeline: Mic → AEC → Spectral NS → Speaker Mask → HP(80Hz) → Notch(50Hz) → LP(7600Hz) → Compressor → AGC → PCM Resampler → WebSocket
+
+  // 0. AEC (Acoustic Echo Cancellation)
+  aecNode = new AudioWorkletNode(audioCtx, "aec-processor");
+
+  // 1. Spectral Noise Suppressor (pure-JS FFT-based spectral subtraction)
+  noiseSuppressorNode = new AudioWorkletNode(audioCtx, "noise-suppressor-processor");
+
+  // 1.5 Speaker Mask Processor (Target speaker isolation)
+  speakerMaskNode = new AudioWorkletNode(audioCtx, "speaker-mask-processor");
+
+  // Forward VAD probability from noise suppressor to PCM processor
+  noiseSuppressorNode.port.onmessage = (e) => {
+    if (e.data && e.data.vadProbability !== undefined) {
+      currentVADProbability = e.data.vadProbability;
+    }
+  };
+
+  // Log speaker enrollment events
+  speakerMaskNode.port.onmessage = (e) => {
+    if (e.data.type === "enrollment_complete") {
+      console.log("%c🎯 Speaker Enrollment Complete", "color: #3B82F6; font-weight: bold; font-size: 14px;");
+      if (statusDot) statusDot.style.background = "#3B82F6"; // Blue when enrolled
+    }
+  };
+
+  // 2. Highpass: Cut low-frequency fan rumble, room vibrations, breathing pops (<80Hz)
   const highpass = audioCtx.createBiquadFilter();
   highpass.type = "highpass";
-  highpass.frequency.setValueAtTime(85, audioCtx.currentTime);
+  highpass.frequency.setValueAtTime(80, audioCtx.currentTime);
   highpass.Q.setValueAtTime(0.7, audioCtx.currentTime);
 
-  // 2. Lowpass: Cuts electrical hiss, coil whine, sharp clicks (>4000Hz)
+  // 3. Notch at 50Hz: Kill India's 50Hz mains hum from cheap laptop/phone mics
+  const notch50 = audioCtx.createBiquadFilter();
+  notch50.type = "notch";
+  notch50.frequency.setValueAtTime(50, audioCtx.currentTime);
+  notch50.Q.setValueAtTime(10, audioCtx.currentTime); // Narrow notch
+
+  // 4. Lowpass: Widened to 7600Hz (was 4000Hz) — sibilants (s, sh, f, th) live at
+  //    4–8kHz and are critical for STT accuracy on Hindi/English fricatives
   const lowpass = audioCtx.createBiquadFilter();
   lowpass.type = "lowpass";
-  lowpass.frequency.setValueAtTime(4000, audioCtx.currentTime);
+  lowpass.frequency.setValueAtTime(7600, audioCtx.currentTime);
   lowpass.Q.setValueAtTime(0.7, audioCtx.currentTime);
 
-  // 3. Compressor: Keeps speech dynamic range balanced and squelches noise floor
+  // 5. Compressor: Keeps speech dynamic range balanced and squelches noise floor
   const compressor = audioCtx.createDynamicsCompressor();
   compressor.threshold.setValueAtTime(-45, audioCtx.currentTime);
   compressor.knee.setValueAtTime(10, audioCtx.currentTime);
@@ -1480,41 +1582,123 @@ async function startMic() {
   compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
   compressor.release.setValueAtTime(0.15, audioCtx.currentTime);
 
-  source.connect(highpass);
-  highpass.connect(lowpass);
-  lowpass.connect(compressor);
+  // 6. AGC: Target Loudness Normalization
+  agcNode = new AudioWorkletNode(audioCtx, "agc-processor");
 
+  // Forward VAD probability from noise suppressor to PCM processor
+  noiseSuppressorNode.port.onmessage = (e) => {
+    if (e.data && e.data.vadProbability !== undefined) {
+      currentVADProbability = e.data.vadProbability;
+    }
+  };
+
+  // Wire the filter chain
+  source.connect(aecNode);
+  aecNode.connect(noiseSuppressorNode);
+  noiseSuppressorNode.connect(speakerMaskNode);
+  speakerMaskNode.connect(highpass);
+  highpass.connect(notch50);
+  notch50.connect(lowpass);
+  lowpass.connect(compressor);
+  compressor.connect(agcNode);
+
+  // 7. PCM Resampler Worklet (16kHz mono, adaptive noise gate)
   workletNode = new AudioWorkletNode(audioCtx, "pcm-processor");
 
   workletNode.port.onmessage = (e) => {
     userRMS = e.data.rms || 0;
+    currentSNR = e.data.snr || 0;
+    currentNoiseFloor = e.data.noiseFloor || 0;
+    const vadProb = e.data.vadProbability || 0;
+    currentVADProbability = vadProb;
+
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
+    // Graceful Degradation UX (SNR Alert)
+    if (currentSNR > 0 && currentSNR < 1.5) {
+      lowSNRFrameCount++;
+      // 3 seconds at 50ms per frame = 60 frames
+      if (lowSNRFrameCount > 60) {
+        ws.send(JSON.stringify({ type: "noise_alert", snr: currentSNR }));
+        lowSNRFrameCount = 0; // Reset after sending to avoid spamming
+      }
+    } else {
+      lowSNRFrameCount = 0;
+    }
+
     if (speaking) {
-      // Swastik is actively talking: suppress speaker echo to avoid cutting her off
+      // ── Reference-Based AEC Barge-in ──
       if (userRMS >= BARGE_THRESHOLD) {
         speechFrameCount++;
         if (speechFrameCount >= 2) {
           stopVoice();
           speechFrameCount = 0;
-          ws.send(e.data.pcm);
+          
+          // Phase 3C: Jitter Buffer push
+          jitterBuffer.push(e.data.pcm);
+          if (jitterBuffer.length >= JITTER_BUFFER_SIZE) {
+            flushJitterBuffer();
+          }
         }
       } else {
         speechFrameCount = Math.max(0, speechFrameCount - 1);
       }
     } else {
-      // Swastik is listening: stream filtered audio cleanly
       speechFrameCount = 0;
-      ws.send(e.data.pcm);
+      // Phase 3C: Jitter Buffer push
+      jitterBuffer.push(e.data.pcm);
+      if (jitterBuffer.length >= JITTER_BUFFER_SIZE) {
+        flushJitterBuffer();
+      }
     }
   };
 
-  compressor.connect(workletNode);
+  // Phase 3C: Jitter Buffer flush helper
+  function flushJitterBuffer() {
+    if (jitterBuffer.length === 0) return;
+    let totalLength = 0;
+    for (let buf of jitterBuffer) totalLength += buf.length;
+    
+    const combined = new Int16Array(totalLength);
+    let offset = 0;
+    for (let buf of jitterBuffer) {
+      combined.set(new Int16Array(buf), offset);
+      offset += buf.length;
+    }
+    
+    ws.send(combined.buffer);
+    jitterBuffer = [];
+  }
+
+  // Phase 3A: Mandatory Telemetry reporting loop
+  if (telemetryInterval) clearInterval(telemetryInterval);
+  telemetryInterval = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: "audio_telemetry",
+        snr: currentSNR,
+        vadProb: currentVADProbability,
+        noiseFloor: currentNoiseFloor,
+        erle: 12.5 // Hardcoded approximate ERLE for now since it's computed internally in AEC
+      }));
+    }
+  }, 2000); // Report every 2 seconds
+
+  agcNode.connect(workletNode);
 
   silentSink = audioCtx.createGain();
   silentSink.gain.value = 0;
   silentSink.connect(audioCtx.destination);
   workletNode.connect(silentSink);
+
+  console.log(
+    "%c🔇 Swastik AI Noise Cancellation Active",
+    "color: #14c8b2; font-weight: bold; font-size: 14px;",
+    "\nPipeline: Mic → AEC → Spectral NS → Speaker Mask → HP(80Hz) → Notch(50Hz) → LP(7600Hz) → Compressor → AGC → PCM(16kHz) → WS"
+  );
+  } catch (err) {
+    console.error("Microphone initialization failed:", err);
+  }
 }
 
 function stopCall() {
@@ -1581,6 +1765,26 @@ if (callBtn) {
     } else {
       startCall();
     }
+  });
+}
+
+// Card Close (Dismiss) Button Listeners
+const closeCalCardBtn = $("closeCalCardBtn");
+const closeWaCardBtn = $("closeWaCardBtn");
+
+if (closeCalCardBtn && calendarCard) {
+  closeCalCardBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    calendarCard.classList.remove("visible");
+    calendarCard.classList.add("dismissed");
+  });
+}
+
+if (closeWaCardBtn && waCard) {
+  closeWaCardBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    waCard.classList.remove("visible");
+    waCard.classList.add("dismissed");
   });
 }
 

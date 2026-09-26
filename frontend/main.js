@@ -1,5 +1,5 @@
 // Dr. Sharma Clinic — Hyper-Futuristic AI Voice Receptionist Engine
-// Enhanced Edition: Shockwaves, Lightning, Particles, Chimes & Thinking
+// Swastik AI Dual Fluid Wave Particle Orbs (Patient & Swastik AI)
 
 const $ = (id) => document.getElementById(id);
 const canvas = $("orbCanvas");
@@ -38,6 +38,19 @@ let silentSink = null;
 let speechFrameCount = 0;
 const BARGE_THRESHOLD = 0.06;
 
+// Noise Cancellation & VAD State
+let aecNode = null;
+let agcNode = null;
+let noiseSuppressorNode = null;
+let speakerMaskNode = null;
+let currentVADProbability = 0;
+let currentSNR = 0;
+let currentNoiseFloor = 0;
+let ncEnabled = true; // Noise cancellation toggle
+
+// Graceful Degradation State
+let lowSNRFrameCount = 0;
+
 // Call timer state
 let callStartTime = 0;
 let callTimerInterval = null;
@@ -46,22 +59,92 @@ let callTimerInterval = null;
 let thinkingMode = false;
 let lastUserSpeechTime = 0;
 
+// Conversation simulation state when idle
+let simActive = true;
+let simIdx = 0;
+let simTimer = 0;
+
+const SIM_CONVERSATION = [
+  {
+    speaker: "swastik",
+    stage: "WHY THEY CALLED",
+    hindi: "नमस्ते! डॉ. शर्मा क्लिनिक में आपका स्वागत है। मैं स्वास्तिक एआई हूँ, आपकी क्या सहायता कर सकता हूँ?",
+    english: "Hello! Welcome to Dr. Sharma Clinic. I am Swastik AI, how may I help you?",
+    pulseAgent: 0.52,
+    pulsePatient: 0.02,
+    duration: 5000,
+  },
+  {
+    speaker: "patient",
+    stage: "CALLER ASKS FOR ADVICE",
+    hindi: "हाँ, मुझे कल रात से बहुत तेज दांत में दर्द हो रहा है... क्या डॉ. शर्मा से मिलना हो सकता है?",
+    english: "Yes, I have severe toothache since last night... Can I consult Dr. Sharma?",
+    pulseAgent: 0.02,
+    pulsePatient: 0.58,
+    duration: 4800,
+  },
+  {
+    speaker: "swastik",
+    stage: "READING REAL SLOTS",
+    hindi: "दांत दर्द के लिए डॉ. शर्मा कल उपलब्ध हैं। क्या मैं आपके लिए सुबह 11:00 बजे का स्लॉट बुक कर दूँ?",
+    english: "Dr. Sharma is available tomorrow for toothache. Shall I book an 11:00 AM slot for you?",
+    pulseAgent: 0.54,
+    pulsePatient: 0.02,
+    showCalendar: true,
+    duration: 5200,
+  },
+  {
+    speaker: "patient",
+    stage: "OFFERING A DOCTOR",
+    hindi: "जी हाँ, कल 11:00 बजे का कन्फर्म कर दीजिए।",
+    english: "Yes, please confirm for tomorrow at 11:00 AM.",
+    pulseAgent: 0.02,
+    pulsePatient: 0.46,
+    duration: 3500,
+  },
+  {
+    speaker: "swastik",
+    stage: "WRITTEN TO THE CALENDAR",
+    hindi: "बहुत बढ़िया! आपका 11:00 बजे का अपॉइंटमेंट बुक हो गया है। डिटेल्स आपके WhatsApp पर भेज दी हैं।",
+    english: "Great! Your 11:00 AM appointment is confirmed. Details sent to your WhatsApp.",
+    pulseAgent: 0.55,
+    pulsePatient: 0.02,
+    showBooking: true,
+    showWhatsApp: true,
+    duration: 5600,
+  }
+];
+
 function setStage(stageName) {
-  stageBadgeText.textContent = stageName.toUpperCase();
+  if (stageBadgeText) {
+    stageBadgeText.textContent = stageName.toUpperCase();
+  }
+  const calBadge = document.getElementById("calLiveBadge");
+  if (calBadge) {
+    const isCalActive = stageName.includes("CALENDAR") || stageName.includes("SLOT");
+    if (isCalActive) {
+      calBadge.classList.add("is-writing");
+      calBadge.textContent = "● " + (stageName.includes("WRITTEN") ? "WRITTEN" : "SYNCING");
+    } else {
+      calBadge.classList.remove("is-writing");
+      calBadge.textContent = "● LIVE SYNC";
+    }
+  }
 }
 
 function setSubtitles(role, text) {
+  if (!speakerTag || !subMain) return;
+
   if (role === "swastik") {
     speakerTag.className = "speaker-tag swastik";
     speakerTag.textContent = "SWASTIK AI";
-    thinkingMode = false; // Agent is responding, no longer thinking
+    thinkingMode = false;
   } else {
     speakerTag.className = "speaker-tag patient";
     speakerTag.textContent = "PATIENT";
     lastUserSpeechTime = performance.now();
   }
 
-  // Trigger subtitle fade-in animation
   subMain.classList.remove("fade-in");
   void subMain.offsetWidth; // force reflow
   subMain.classList.add("fade-in");
@@ -69,13 +152,22 @@ function setSubtitles(role, text) {
   subMain.textContent = text;
 
   const hasDevanagari = /[\u0900-\u097F]/.test(text);
-  if (hasDevanagari) {
-    subTrans.textContent = "(English translation) " + text;
-    subTrans.style.display = "block";
-  } else {
-    subTrans.style.display = "none";
+  if (subTrans) {
+    if (hasDevanagari) {
+      subTrans.textContent = "(English translation) " + text;
+      subTrans.style.display = "block";
+    } else {
+      subTrans.style.display = "none";
+    }
   }
 }
+
+// Phase 3: Telemetry State
+let telemetryInterval = null;
+
+// Phase 3: Jitter Buffer
+let jitterBuffer = [];
+let JITTER_BUFFER_SIZE = 2; // 2 frames lookahead
 
 // ------------------------------------------------------------------
 // Live Clock & Call Timer
@@ -116,8 +208,8 @@ function stopCallTimer() {
 }
 
 // ------------------------------------------------------------------
-// High-Tech 3D WebGL Engine: Radiant Light Core Spheres, Gyroscopic
-// Concentric Rings, Neural Synapses & Quantum Parallax (Three.js)
+// High-Tech 3D WebGL Engine: Dual Fluid Wave Particle Orbs (Three.js)
+// Matching /orb & DualParticleOrb.tsx (Image 2 silky wave folds)
 // ------------------------------------------------------------------
 let width = window.innerWidth;
 let height = window.innerHeight;
@@ -125,13 +217,13 @@ let isMobile = false;
 let isTablet = false;
 
 // Backward-compatible coordinate state for UI tracking
-let leftOrb = { x: 0, y: 0, baseRadius: 80, radius: 80, shockwaves: [] };
-let rightOrb = { x: 0, y: 0, baseRadius: 84, radius: 84, shockwaves: [] };
+let leftOrb = { x: 0, y: 0, baseRadius: 2.3, radius: 2.3, shockwaves: [] };
+let rightOrb = { x: 0, y: 0, baseRadius: 2.3, radius: 2.3, shockwaves: [] };
 
 // 3D Scene, Camera & WebGL Renderer
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-camera.position.set(0, 0, 85);
+const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 1000);
+camera.position.set(0, 0, 25);
 
 const renderer = new THREE.WebGLRenderer({
   canvas: canvas,
@@ -142,963 +234,498 @@ const renderer = new THREE.WebGLRenderer({
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(width, height);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.25;
+renderer.toneMappingExposure = 1.4;
 
-// Procedural Luminous Particle & Glow Sprite Textures (Generated via Offscreen 2D Canvas)
-function createDotTexture() {
+// Color Palettes
+const THEMES = {
+  cyan: {
+    primary: new THREE.Color(0x00E5FF),
+    deep: new THREE.Color(0x004466),
+    highlight: new THREE.Color(0xE6FFFF),
+    ringCol: 0x00E5FF,
+    glowRgb: "0, 229, 255",
+  },
+  gold: {
+    primary: new THREE.Color(0xFF9E00),
+    deep: new THREE.Color(0x7A2200),
+    highlight: new THREE.Color(0xFFF6D6),
+    ringCol: 0xFF9E00,
+    glowRgb: "255, 158, 0",
+  },
+};
+
+// ── Procedural Textures (Zero Box Artifacts, Gaussian Softness) ──
+function createPhotonTexture() {
   const c = document.createElement("canvas");
   c.width = 128;
   c.height = 128;
-  const cctx = c.getContext("2d");
-
-  // Outer soft atmospheric bloom
-  const g2 = cctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  g2.addColorStop(0, "rgba(255, 255, 255, 1.0)");
-  g2.addColorStop(0.15, "rgba(255, 255, 255, 0.95)");
-  g2.addColorStop(0.35, "rgba(220, 250, 255, 0.75)");
-  g2.addColorStop(0.6, "rgba(20, 200, 178, 0.35)");
-  g2.addColorStop(0.85, "rgba(0, 229, 255, 0.12)");
-  g2.addColorStop(1.0, "rgba(0, 0, 0, 0)");
-  cctx.fillStyle = g2;
-  cctx.fillRect(0, 0, 128, 128);
-
-  // Intense central hot photon core
-  const g1 = cctx.createRadialGradient(64, 64, 0, 64, 64, 24);
-  g1.addColorStop(0, "rgba(255, 255, 255, 1.0)");
-  g1.addColorStop(0.5, "rgba(255, 255, 255, 0.95)");
-  g1.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
-  cctx.fillStyle = g1;
-  cctx.fillRect(0, 0, 128, 128);
-
+  const ctx = c.getContext("2d");
+  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
+  grad.addColorStop(0.12, "rgba(255, 255, 255, 0.95)");
+  grad.addColorStop(0.28, "rgba(255, 255, 255, 0.65)");
+  grad.addColorStop(0.55, "rgba(255, 255, 255, 0.15)");
+  grad.addColorStop(1.0, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
   const tex = new THREE.CanvasTexture(c);
   tex.needsUpdate = true;
   return tex;
 }
 
-function createGlowTexture(isPatient) {
+function createAnamorphicFlareTexture(rgb) {
   const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 128;
-  const cctx = c.getContext("2d");
-  const g = cctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  if (isPatient) {
-    g.addColorStop(0, "rgba(255, 245, 210, 0.95)");
-    g.addColorStop(0.22, "rgba(245, 166, 35, 0.6)");
-    g.addColorStop(0.55, "rgba(217, 119, 6, 0.15)");
-    g.addColorStop(1, "rgba(0, 0, 0, 0)");
-  } else {
-    g.addColorStop(0, "rgba(220, 255, 255, 0.95)");
-    g.addColorStop(0.22, "rgba(20, 200, 178, 0.6)");
-    g.addColorStop(0.55, "rgba(13, 148, 136, 0.15)");
-    g.addColorStop(1, "rgba(0, 0, 0, 0)");
-  }
-  cctx.fillStyle = g;
-  cctx.fillRect(0, 0, 128, 128);
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-const dotTexture = createDotTexture();
-const glowTexturePatient = createGlowTexture(true);
-const glowTextureSwastik = createGlowTexture(false);
-
-// Procedural Ethereal Air Particle Texture (High-visibility incandescent motes)
-function createAirParticleTexture() {
-  const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 128;
-  const cctx = c.getContext("2d");
-
-  // Layer 1: Soft outer atmospheric bloom for visibility
-  const g2 = cctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  g2.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
-  g2.addColorStop(0.10, "rgba(255, 255, 255, 0.98)");
-  g2.addColorStop(0.25, "rgba(255, 255, 255, 0.85)");
-  g2.addColorStop(0.45, "rgba(255, 255, 255, 0.50)");
-  g2.addColorStop(0.65, "rgba(255, 255, 255, 0.22)");
-  g2.addColorStop(0.85, "rgba(255, 255, 255, 0.06)");
-  g2.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
-  cctx.fillStyle = g2;
-  cctx.fillRect(0, 0, 128, 128);
-
-  // Layer 2: Hot photon core for crisp visibility
-  const g1 = cctx.createRadialGradient(64, 64, 0, 64, 64, 18);
-  g1.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
-  g1.addColorStop(0.6, "rgba(255, 255, 255, 0.9)");
-  g1.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
-  cctx.fillStyle = g1;
-  cctx.fillRect(0, 0, 128, 128);
-
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-const airParticleTexture = createAirParticleTexture();
-
-// Ultra-fine dust mote texture (tiny, crisp, high-count inner nebula)
-function createFineParticleTexture() {
-  const c = document.createElement("canvas");
-  c.width = 32;
-  c.height = 32;
-  const cctx = c.getContext("2d");
-  const g = cctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-  g.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
-  g.addColorStop(0.2, "rgba(255, 255, 255, 0.88)");
-  g.addColorStop(0.5, "rgba(255, 255, 255, 0.35)");
-  g.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
-  cctx.fillStyle = g;
-  cctx.fillRect(0, 0, 32, 32);
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-const fineParticleTexture = createFineParticleTexture();
-
-// Ethereal haze texture (large, soft, diffused atmospheric fog particles)
-function createHazeTexture() {
-  const c = document.createElement("canvas");
-  c.width = 128;
-  c.height = 128;
-  const cctx = c.getContext("2d");
-  const g = cctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  g.addColorStop(0.0, "rgba(255, 255, 255, 0.55)");
-  g.addColorStop(0.15, "rgba(255, 255, 255, 0.40)");
-  g.addColorStop(0.35, "rgba(255, 255, 255, 0.22)");
-  g.addColorStop(0.6, "rgba(255, 255, 255, 0.08)");
-  g.addColorStop(1.0, "rgba(255, 255, 255, 0.0)");
-  cctx.fillStyle = g;
-  cctx.fillRect(0, 0, 128, 128);
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-const hazeTexture = createHazeTexture();
-
-// Helper: Generate circle points
-function createCirclePoints(radius, segments) {
-  const pts = [];
-  for (let i = 0; i <= segments; i++) {
-    const theta = (i / segments) * Math.PI * 2;
-    pts.push(new THREE.Vector3(Math.cos(theta) * radius, Math.sin(theta) * radius, 0));
-  }
-  return pts;
-}
-
-// ------------------------------------------------------------------
-// High-Fidelity Custom Textures for Sci-Fi Reactors & Volumetric Plasma
-// ------------------------------------------------------------------
-
-// Golden Thermonuclear Fusion Core Texture (Image 1)
-function createGoldenCoreTexture() {
-  const c = document.createElement("canvas");
-  c.width = 256;
+  c.width = 1024;
   c.height = 256;
-  const cctx = c.getContext("2d");
+  const ctx = c.getContext("2d");
+  const cx = 512;
+  const cy = 128;
+  const imgData = ctx.createImageData(1024, 256);
+  const data = imgData.data;
+  const [r, g, b] = rgb.split(",").map((v) => parseInt(v.trim()));
 
-  // Multi-tier radial gradient: pure white center -> hot golden amber -> deep solar flare
-  const g = cctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0.00, "rgba(255, 255, 255, 1.0)");
-  g.addColorStop(0.12, "rgba(255, 250, 220, 0.98)");
-  g.addColorStop(0.28, "rgba(255, 195, 45, 0.85)");
-  g.addColorStop(0.50, "rgba(255, 125, 15, 0.55)");
-  g.addColorStop(0.75, "rgba(215, 65, 0, 0.20)");
-  g.addColorStop(1.00, "rgba(0, 0, 0, 0.0)");
-  cctx.fillStyle = g;
-  cctx.fillRect(0, 0, 256, 256);
-
-  // Intense white-hot central photon starburst
-  const gCore = cctx.createRadialGradient(128, 128, 0, 128, 128, 48);
-  gCore.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
-  gCore.addColorStop(0.6, "rgba(255, 255, 240, 0.95)");
-  gCore.addColorStop(1.0, "rgba(255, 220, 120, 0.0)");
-  cctx.fillStyle = gCore;
-  cctx.fillRect(0, 0, 256, 256);
-
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-// Wide Soft Amber Atmospheric Bloom Texture
-function createGoldenGlowTexture() {
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 256;
-  const cctx = c.getContext("2d");
-  const g = cctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0.00, "rgba(255, 245, 210, 0.95)");
-  g.addColorStop(0.20, "rgba(245, 166, 35, 0.65)");
-  g.addColorStop(0.48, "rgba(217, 119, 6, 0.25)");
-  g.addColorStop(0.78, "rgba(180, 83, 9, 0.08)");
-  g.addColorStop(1.00, "rgba(0, 0, 0, 0.0)");
-  cctx.fillStyle = g;
-  cctx.fillRect(0, 0, 256, 256);
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-// Electric Cyan Plasma Core Texture (Image 2)
-function createCyanCoreTexture() {
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 256;
-  const cctx = c.getContext("2d");
-
-  // Pure white core radiating into electric cyan, neon teal, deep sapphire
-  const g = cctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0.00, "rgba(255, 255, 255, 1.0)");
-  g.addColorStop(0.12, "rgba(230, 255, 255, 0.98)");
-  g.addColorStop(0.30, "rgba(0, 245, 255, 0.88)");
-  g.addColorStop(0.55, "rgba(0, 160, 255, 0.50)");
-  g.addColorStop(0.80, "rgba(2, 65, 195, 0.18)");
-  g.addColorStop(1.00, "rgba(0, 0, 0, 0.0)");
-  cctx.fillStyle = g;
-  cctx.fillRect(0, 0, 256, 256);
-
-  const gCore = cctx.createRadialGradient(128, 128, 0, 128, 128, 48);
-  gCore.addColorStop(0.0, "rgba(255, 255, 255, 1.0)");
-  gCore.addColorStop(0.6, "rgba(240, 255, 255, 0.95)");
-  gCore.addColorStop(1.0, "rgba(140, 255, 255, 0.0)");
-  cctx.fillStyle = gCore;
-  cctx.fillRect(0, 0, 256, 256);
-
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-// Wide Soft Electric Cyan/Cobalt Bloom Texture
-function createCyanGlowTexture() {
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 256;
-  const cctx = c.getContext("2d");
-  const g = cctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-  g.addColorStop(0.00, "rgba(220, 255, 255, 0.95)");
-  g.addColorStop(0.20, "rgba(0, 229, 255, 0.65)");
-  g.addColorStop(0.48, "rgba(14, 165, 233, 0.25)");
-  g.addColorStop(0.78, "rgba(2, 132, 199, 0.08)");
-  g.addColorStop(1.00, "rgba(0, 0, 0, 0.0)");
-  cctx.fillStyle = g;
-  cctx.fillRect(0, 0, 256, 256);
-  const tex = new THREE.CanvasTexture(c);
-  tex.needsUpdate = true;
-  return tex;
-}
-
-const goldenCoreTexture = createGoldenCoreTexture();
-const goldenGlowTexture = createGoldenGlowTexture();
-const cyanCoreTexture = createCyanCoreTexture();
-const cyanGlowTexture = createCyanGlowTexture();
-
-// ------------------------------------------------------------------
-// GLSL Shaders: Tony Stark JARVIS 3D Holographic Sphere
-// (Directly modeled from Video Project 2.mp4 & Image 1 / Image 2)
-// ------------------------------------------------------------------
-
-// Faint Planetary Glass Boundary Vertex Shader
-const goldenOuterRimVertexShader = `
-  varying vec3 vNormal;
-  varying vec3 vViewPosition;
-
-  void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    vViewPosition = -mvPosition.xyz;
-    gl_Position = projectionMatrix * mvPosition;
-  }
-`;
-
-// High-Definition Holographic 3D Globe Grid Vertex Shader
-const jarvisHologramVertexShader = `
-  uniform float uTime;
-  uniform float uPulse;
-  varying vec3 vWorldPosition;
-  varying vec3 vNormal;
-  varying vec3 vViewPosition;
-  varying vec2 vUv;
-  varying float vDisplacement;
-
-  void main() {
-    vUv = uv;
-    vNormal = normalize(normalMatrix * normal);
-    
-    // Subtle acoustic surface undulation on voice/speech
-    float wave = sin(position.x * 2.5 + uTime * 3.0) * cos(position.y * 2.5 + uTime * 2.5);
-    float disp = wave * (0.04 + uPulse * 0.22);
-    vDisplacement = disp;
-    vec3 displacedPos = position + normal * disp;
-
-    vec4 worldPos = modelMatrix * vec4(displacedPos, 1.0);
-    vWorldPosition = worldPos.xyz;
-    vec4 mvPosition = modelViewMatrix * vec4(displacedPos, 1.0);
-    vViewPosition = -mvPosition.xyz;
-    gl_Position = projectionMatrix * mvPosition;
-  }
-`;
-
-// High-Definition Holographic 3D Globe Grid Fragment Shader
-// Renders procedural latitude & longitude grid lines with mathematical anti-aliasing,
-// Fresnel rim luminescence, holographic scanlines, and quantum shimmer!
-const jarvisHologramFragShader = `
-  uniform float uTime;
-  uniform float uPulse;
-  uniform vec3 uBaseColor;
-  uniform vec3 uGlowColor;
-  uniform vec3 uGridColor;
-  varying vec3 vWorldPosition;
-  varying vec3 vNormal;
-  varying vec3 vViewPosition;
-  varying vec2 vUv;
-  varying float vDisplacement;
-
-  void main() {
-    vec3 normal = normalize(vNormal);
-    vec3 viewDir = normalize(vViewPosition);
-    float NdotV = max(dot(normal, viewDir), 0.0);
-    float fresnel = pow(1.0 - NdotV, 2.4);
-
-    // Procedural anti-aliased latitude lines (16 divisions)
-    float latFract = fract(vUv.y * 16.0 - 0.5) - 0.5;
-    float latLine = abs(latFract) / max(fwidth(vUv.y * 16.0), 0.001);
-    float latGrid = 1.0 - smoothstep(0.0, 1.4, latLine);
-
-    // Procedural anti-aliased longitude lines (28 divisions)
-    float lonFract = fract(vUv.x * 28.0 - 0.5) - 0.5;
-    float lonLine = abs(lonFract) / max(fwidth(vUv.x * 28.0), 0.001);
-    float lonGrid = 1.0 - smoothstep(0.0, 1.4, lonLine);
-
-    float totalGrid = clamp(latGrid + lonGrid, 0.0, 1.0);
-
-    // Holographic horizontal scanlines drifting down
-    float scanline = sin(vWorldPosition.y * 14.0 - uTime * 4.2) * 0.5 + 0.5;
-
-    // Subtle holographic quantum interference flicker
-    float flicker = sin(uTime * 28.0) * 0.035 + 0.965;
-
-    // Interior is transparent/deep dark so glowing singularity core is visible inside!
-    vec3 interiorCol = uBaseColor * 0.15;
-    vec3 rimCol = mix(uBaseColor, uGlowColor, fresnel);
-    vec3 gridCol = uGridColor;
-
-    vec3 finalColor = mix(interiorCol, rimCol, fresnel);
-    finalColor = mix(finalColor, gridCol, totalGrid * 0.85);
-    finalColor *= (0.88 + scanline * 0.16) * flicker;
-
-    // Alpha composition: Transparent center, glowing grid lines, luminous rim, voice flare
-    float alpha = fresnel * 0.55 + totalGrid * 0.60;
-    alpha += uPulse * 0.35;
-    alpha = clamp(alpha, 0.02, 0.95);
-
-    gl_FragColor = vec4(finalColor, alpha);
-  }
-`;
-
-// Outer Atmospheric Boundary Fresnel Shader
-const jarvisAtmosphereFragShader = `
-  uniform vec3 uColor;
-  varying vec3 vNormal;
-  varying vec3 vViewPosition;
-
-  void main() {
-    vec3 normal = normalize(vNormal);
-    vec3 viewDir = normalize(vViewPosition);
-    float fresnel = pow(1.0 - max(dot(normal, viewDir), 0.0), 3.4);
-    float alpha = fresnel * 0.38;
-    gl_FragColor = vec4(uColor, alpha);
-  }
-`;
-
-// ------------------------------------------------------------------
-// Master Builder: Iron Man JARVIS 3D Holographic Sphere
-// (True 3D Volumetric Spherical Hologram from Video Project 2.mp4 & Images 1 & 2)
-// ------------------------------------------------------------------
-function createJarvisHologramOrb(config = {}) {
-  const baseRadius = config.baseRadius || 6.5;
-  let mode = config.mode || 'gold'; // 'gold' or 'cyan'
-  const dir = config.dir || (mode === 'gold' ? 1 : -1);
-
-  const group = new THREE.Group();
-
-  // Color Palettes
-  const PALETTES = {
-    gold: {
-      baseColor: new THREE.Vector3(0.96, 0.65, 0.14),   // #F5A623 Molten Gold
-      glowColor: new THREE.Vector3(1.0, 0.88, 0.48),    // #FFE07A Incandescent Flare
-      gridColor: new THREE.Vector3(1.0, 0.94, 0.72),    // #FFF0B8 Coordinate Grid
-      rimColor: new THREE.Vector3(1.0, 0.52, 0.08),     // #FF8514 Corona
-      hexPrimary: 0xF5A623,
-      hexAccent: 0xFFD54F,
-      hexBright: 0xFFF9C4,
-      hexDeep: 0xD97706,
-      coreMap: goldenCoreTexture,
-      glowMap: goldenGlowTexture,
-    },
-    cyan: {
-      baseColor: new THREE.Vector3(0.0, 0.88, 1.0),     // #00E0FF Electric Cyan
-      glowColor: new THREE.Vector3(0.55, 0.98, 1.0),    // #8CF9FF Neon Ice
-      gridColor: new THREE.Vector3(0.85, 1.0, 1.0),     // #D8FFFF Coordinate Grid
-      rimColor: new THREE.Vector3(0.08, 0.65, 0.95),    // #14A6F3 Deep Aqua
-      hexPrimary: 0x00E5FF,
-      hexAccent: 0x14C8B2,
-      hexBright: 0x7DF9FF,
-      hexDeep: 0x0284C7,
-      coreMap: cyanCoreTexture,
-      glowMap: cyanGlowTexture,
-    }
-  };
-
-  let curPalette = PALETTES[mode];
-
-  // 1. Central Thermonuclear Singularity Core
-  const coreMat = new THREE.SpriteMaterial({
-    map: curPalette.coreMap,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    opacity: 0.96,
-    depthWrite: false,
-  });
-  const coreSprite = new THREE.Sprite(coreMat);
-  coreSprite.scale.set(baseRadius * 1.55, baseRadius * 1.55, 1);
-  group.add(coreSprite);
-
-  // Volumetric Halo Atmosphere
-  const innerHaloMat = new THREE.SpriteMaterial({
-    map: curPalette.glowMap,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    opacity: 0.72,
-    depthWrite: false,
-  });
-  const innerHalo = new THREE.Sprite(innerHaloMat);
-  innerHalo.scale.set(baseRadius * 3.6, baseRadius * 3.6, 1);
-  innerHalo.position.z = -0.5;
-  group.add(innerHalo);
-
-  // 2. 3D Holographic Globe Coordinate Cage (True 3D Sphere from Video Project 2.mp4)
-  const globeGeo = new THREE.SphereGeometry(baseRadius * 1.04, 48, 28);
-  const globeMat = new THREE.ShaderMaterial({
-    vertexShader: jarvisHologramVertexShader,
-    fragmentShader: jarvisHologramFragShader,
-    uniforms: {
-      uTime: { value: 0.0 },
-      uPulse: { value: 0.0 },
-      uBaseColor: { value: curPalette.baseColor.clone() },
-      uGlowColor: { value: curPalette.glowColor.clone() },
-      uGridColor: { value: curPalette.gridColor.clone() },
-    },
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  const globeMesh = new THREE.Mesh(globeGeo, globeMat);
-  group.add(globeMesh);
-
-  // Faint Outer Atmospheric Boundary Sphere
-  const outerSphereGeo = new THREE.SphereGeometry(baseRadius * 1.34, 36, 36);
-  const outerSphereMat = new THREE.ShaderMaterial({
-    vertexShader: goldenOuterRimVertexShader,
-    fragmentShader: jarvisAtmosphereFragShader,
-    uniforms: {
-      uColor: { value: curPalette.rimColor.clone() },
-    },
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.BackSide,
-  });
-  const outerSphereMesh = new THREE.Mesh(outerSphereGeo, outerSphereMat);
-  group.add(outerSphereMesh);
-
-  // 3. 3D Gyroscopic Gimbal Rings (Astrolabe from Video Project 2.mp4)
-  // 5 Nested Rings rotating in 3D with independent Euler angles and precession:
-  const gimbalRings = [];
-
-  // Helper: Create Segmented Arc Lines
-  function createSegmentedArcGeometry(radius, segmentCount, arcAngleRatio) {
-    const pts = [];
-    const totalCirc = Math.PI * 2;
-    const segStep = totalCirc / segmentCount;
-    const activeArc = segStep * arcAngleRatio;
-    const stepsPerSeg = 24;
-
-    for (let s = 0; s < segmentCount; s++) {
-      const startA = s * segStep;
-      for (let j = 0; j < stepsPerSeg; j++) {
-        const a1 = startA + activeArc * (j / stepsPerSeg);
-        const a2 = startA + activeArc * ((j + 1) / stepsPerSeg);
-        pts.push(new THREE.Vector3(Math.cos(a1) * radius, Math.sin(a1) * radius, 0));
-        pts.push(new THREE.Vector3(Math.cos(a2) * radius, Math.sin(a2) * radius, 0));
+  for (let y = 0; y < 256; y++) {
+    const dy = (y - cy) / 54.0;
+    const dy2 = dy * dy;
+    for (let x = 0; x < 1024; x++) {
+      const dx = (x - cx) / 440.0;
+      const dx2 = dx * dx;
+      const factor = Math.exp(-(dx2 * 2.5 + dy2 * 4.8));
+      const core = Math.exp(-(dx2 * 28.0 + dy2 * 28.0)) * 1.6;
+      const intensity = Math.min(1.0, factor + core);
+      const idx = (y * 1024 + x) * 4;
+      if (intensity > 0.003) {
+        const whiteBlend = Math.min(1.0, factor * 1.5 + core * 2.0);
+        data[idx] = Math.round(r + (255 - r) * whiteBlend * 0.85);
+        data[idx + 1] = Math.round(g + (255 - g) * whiteBlend * 0.85);
+        data[idx + 2] = Math.round(b + (255 - b) * whiteBlend * 0.85);
+        data[idx + 3] = Math.round(intensity * 255);
+      } else {
+        data[idx + 3] = 0;
       }
     }
-    return new THREE.BufferGeometry().setFromPoints(pts);
   }
+  ctx.putImageData(imgData, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
 
-  // Gimbal 1: Equatorial Gyroscope Ring (3 Segmented Arcs with 3 Tracking Nodes)
-  const g1Group = new THREE.Group();
-  const g1Geo = createSegmentedArcGeometry(baseRadius * 0.88, 3, 0.78);
-  const g1Mat = new THREE.LineSegments(g1Geo, new THREE.LineBasicMaterial({
-    color: curPalette.hexBright,
-    transparent: true,
-    opacity: 0.88,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  }));
-  g1Group.add(g1Mat);
-  // 3 Orbital Tracking Beads
-  const g1Beads = [];
-  for (let b = 0; b < 3; b++) {
-    const bMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.22, 12, 12),
-      new THREE.MeshBasicMaterial({ color: curPalette.hexBright, transparent: true, opacity: 0.95 })
-    );
-    const bAngle = (b / 3) * Math.PI * 2;
-    bMesh.position.set(Math.cos(bAngle) * baseRadius * 0.88, Math.sin(bAngle) * baseRadius * 0.88, 0);
-    g1Group.add(bMesh);
-    g1Beads.push(bMesh);
+function createStarGlintTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+  const cx = 128;
+  const cy = 128;
+  const imgData = ctx.createImageData(256, 256);
+  const data = imgData.data;
+
+  for (let y = 0; y < 256; y++) {
+    const dy = (y - cy) / 120.0;
+    for (let x = 0; x < 256; x++) {
+      const dx = (x - cx) / 120.0;
+      const r = Math.sqrt(dx * dx + dy * dy);
+      const spikeX = Math.exp(-((dx * 1.2) ** 2 + (dy * 22.0) ** 2));
+      const spikeY = Math.exp(-((dy * 1.2) ** 2 + (dx * 22.0) ** 2));
+      const diag1 = Math.exp(-(((dx + dy) * 1.4) ** 2 + ((dx - dy) * 14.0) ** 2)) * 0.35;
+      const diag2 = Math.exp(-(((dx - dy) * 1.4) ** 2 + ((dx + dy) * 14.0) ** 2)) * 0.35;
+      const core = Math.exp(-(r * 9.0)) * 1.3;
+      const val = Math.min(1.0, spikeX * 0.8 + spikeY * 0.8 + diag1 + diag2 + core);
+      const idx = (y * 256 + x) * 4;
+      if (val > 0.004) {
+        data[idx] = 255;
+        data[idx + 1] = 255;
+        data[idx + 2] = 255;
+        data[idx + 3] = Math.round(val * 255);
+      } else {
+        data[idx + 3] = 0;
+      }
+    }
   }
-  group.add(g1Group);
-  gimbalRings.push({ group: g1Group, mat: g1Mat, rotSpeed: [0, 0, 0.014 * dir], baseOpacity: 0.88 });
+  ctx.putImageData(imgData, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
 
-  // Gimbal 2: Polar Meridian Ring (Tilted 90° X, rotating along longitude)
-  const g2Group = new THREE.Group();
-  g2Group.rotation.x = Math.PI * 0.5;
-  const g2Pts = createCirclePoints(baseRadius * 0.98, 80);
-  const g2Mat = new THREE.LineLoop(
-    new THREE.BufferGeometry().setFromPoints(g2Pts),
-    new THREE.LineBasicMaterial({ color: curPalette.hexPrimary, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false })
-  );
-  g2Group.add(g2Mat);
-  group.add(g2Group);
-  gimbalRings.push({ group: g2Group, mat: g2Mat.material, rotSpeed: [0, 0.016 * dir, 0], baseOpacity: 0.75 });
+function createSoftHaloTexture(rgb) {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+  const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  grad.addColorStop(0.0, `rgba(${rgb}, 0.65)`);
+  grad.addColorStop(0.25, `rgba(${rgb}, 0.28)`);
+  grad.addColorStop(0.65, `rgba(${rgb}, 0.05)`);
+  grad.addColorStop(1.0, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.needsUpdate = true;
+  return tex;
+}
 
-  // Gimbal 3: Orbital Gimbal Alpha (Tilted 45° X, 25° Y, 4 Segmented Arcs with 4 Nodes)
-  const g3Group = new THREE.Group();
-  g3Group.rotation.set(0.78, 0.35, 0.20);
-  const g3Geo = createSegmentedArcGeometry(baseRadius * 1.10, 4, 0.72);
-  const g3Mat = new THREE.LineSegments(g3Geo, new THREE.LineBasicMaterial({
-    color: curPalette.hexAccent,
-    transparent: true,
-    opacity: 0.82,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  }));
-  g3Group.add(g3Mat);
-  group.add(g3Group);
-  gimbalRings.push({ group: g3Group, mat: g3Mat, rotSpeed: [-0.009 * dir, 0.012 * dir, 0.006], baseOpacity: 0.82 });
+const photonTex = createPhotonTexture();
+const starGlintTex = createStarGlintTexture();
+const flareCyanTex = createAnamorphicFlareTexture(THEMES.cyan.glowRgb);
+const flareGoldTex = createAnamorphicFlareTexture(THEMES.gold.glowRgb);
+const haloCyanTex = createSoftHaloTexture(THEMES.cyan.glowRgb);
+const haloGoldTex = createSoftHaloTexture(THEMES.gold.glowRgb);
 
-  // Gimbal 4: Orbital Gimbal Beta (Tilted -55° X, 35° Z, with 48 Radial Local Ticks)
-  const g4Group = new THREE.Group();
-  g4Group.rotation.set(-0.65, 0.85, -0.45);
-  const g4TickPts = [];
-  const g4R1 = baseRadius * 1.18;
-  const g4Ticks = 48;
-  for (let k = 0; k < g4Ticks; k++) {
-    const a = (k / g4Ticks) * Math.PI * 2;
-    const len = k % 4 === 0 ? baseRadius * 0.06 : baseRadius * 0.03;
-    g4TickPts.push(new THREE.Vector3(Math.cos(a) * g4R1, Math.sin(a) * g4R1, 0));
-    g4TickPts.push(new THREE.Vector3(Math.cos(a) * (g4R1 + len), Math.sin(a) * (g4R1 + len), 0));
-  }
-  const g4Mat = new THREE.LineSegments(
-    new THREE.BufferGeometry().setFromPoints(g4TickPts),
-    new THREE.LineBasicMaterial({ color: curPalette.hexPrimary, transparent: true, opacity: 0.70, blending: THREE.AdditiveBlending, depthWrite: false })
-  );
-  g4Group.add(g4Mat);
-  group.add(g4Group);
-  gimbalRings.push({ group: g4Group, mat: g4Mat, rotSpeed: [0.008 * dir, -0.010 * dir, 0.011], baseOpacity: 0.70 });
+// ── Fluid Orb Subsystem (Silky Wave Folds from Image 2 & /orb) ──
+class FluidOrbEntity {
+  constructor(type, xPos, radius = 2.7) {
+    this.type = type;
+    this.baseRadius = radius;
+    this.currentPos = new THREE.Vector3(xPos, 0, 0);
+    this.group = new THREE.Group();
+    this.group.position.copy(this.currentPos);
 
-  // Gimbal 5: Outer Telemetry Reticle Track (72 Precision Ticks from Image 1)
-  const g5Group = new THREE.Group();
-  const tickPts = [];
-  const tickCount = 72;
-  const tickR1 = baseRadius * 1.28;
-  for (let i = 0; i < tickCount; i++) {
-    const a = (i / tickCount) * Math.PI * 2;
-    const isMajor = i % 6 === 0;
-    const isMedium = i % 3 === 0;
-    const tickLen = isMajor ? baseRadius * 0.08 : (isMedium ? baseRadius * 0.045 : baseRadius * 0.025);
-    tickPts.push(new THREE.Vector3(Math.cos(a) * tickR1, Math.sin(a) * tickR1, 0));
-    tickPts.push(new THREE.Vector3(Math.cos(a) * (tickR1 + tickLen), Math.sin(a) * (tickR1 + tickLen), 0));
-  }
-  const g5Mat = new THREE.LineSegments(
-    new THREE.BufferGeometry().setFromPoints(tickPts),
-    new THREE.LineBasicMaterial({ color: curPalette.hexAccent, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false })
-  );
-  g5Group.add(g5Mat);
+    this.sphereGroup = new THREE.Group();
+    this.group.add(this.sphereGroup);
 
-  // Outer Segmented Radar Brackets
-  const bracketGeo = createSegmentedArcGeometry(baseRadius * 1.40, 4, 0.45);
-  const bracketMat = new THREE.LineSegments(bracketGeo, new THREE.LineBasicMaterial({
-    color: curPalette.hexBright,
-    transparent: true,
-    opacity: 0.85,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  }));
-  g5Group.add(bracketMat);
+    this.ringsGroup = new THREE.Group();
+    this.group.add(this.ringsGroup);
 
-  group.add(g5Group);
-  gimbalRings.push({ group: g5Group, mat: g5Mat, rotSpeed: [0, 0, -0.004 * dir], baseOpacity: 0.65 });
+    const pal = THEMES[type];
 
-  // 4. 3D Internal Swirling Magnetic Plasma Filaments (3D Lissajous & Double Helix)
-  const plasmaCurves = [];
+    // 1. Inner Undulating Fluid Waves (Silky Harmonic Wave Folds)
+    const WAVE_RINGS = 100;
+    const POINTS_PER_RING = 130;
+    const WAVE_TOTAL = WAVE_RINGS * POINTS_PER_RING;
+    this.waveGeo = new THREE.BufferGeometry();
+    const wPositions = new Float32Array(WAVE_TOTAL * 3);
+    const wColors = new Float32Array(WAVE_TOTAL * 3);
+    this.waveMeta = [];
 
-  // Curve A: 3D Spherical Lissajous Knot
-  const lissPts = [];
-  const lissSteps = 160;
-  for (let s = 0; s <= lissSteps; s++) {
-    const t = (s / lissSteps) * Math.PI * 2;
-    const r = baseRadius * 0.68;
-    const x = r * Math.sin(3.0 * t) * Math.cos(t);
-    const y = r * Math.sin(3.0 * t) * Math.sin(t);
-    const z = r * Math.cos(3.0 * t);
-    lissPts.push(new THREE.Vector3(x, y, z));
-  }
-  const lissMat = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(lissPts),
-    new THREE.LineBasicMaterial({ color: curPalette.hexBright, transparent: true, opacity: 0.78, blending: THREE.AdditiveBlending, depthWrite: false })
-  );
-  group.add(lissMat);
-  plasmaCurves.push({ line: lissMat, rotSpeed: [0.012 * dir, 0.016 * dir, 0.009], baseOpacity: 0.78 });
+    let idx = 0;
+    for (let r = 0; r < WAVE_RINGS; r++) {
+      const v = (r / (WAVE_RINGS - 1)) * Math.PI - Math.PI / 2;
+      for (let p = 0; p < POINTS_PER_RING; p++) {
+        const u = (p / POINTS_PER_RING) * Math.PI * 2;
+        wPositions[idx * 3] = 0;
+        wPositions[idx * 3 + 1] = 0;
+        wPositions[idx * 3 + 2] = 0;
+        wColors[idx * 3] = pal.primary.r;
+        wColors[idx * 3 + 1] = pal.primary.g;
+        wColors[idx * 3 + 2] = pal.primary.b;
+        this.waveMeta.push({ u, v, baseR: radius * 0.92 });
+        idx++;
+      }
+    }
+    this.waveGeo.setAttribute("position", new THREE.BufferAttribute(wPositions, 3));
+    this.waveGeo.setAttribute("color", new THREE.BufferAttribute(wColors, 3));
 
-  // Curve B: 3D Double-Helix Polar Twister
-  const helixPts = [];
-  const helixSteps = 120;
-  for (let h = 0; h <= helixSteps; h++) {
-    const ht = (h / helixSteps) * Math.PI * 2 * 3.0;
-    const z = (h / helixSteps - 0.5) * baseRadius * 1.35;
-    const hr = baseRadius * (0.22 + 0.40 * Math.sin((h / helixSteps) * Math.PI));
-    helixPts.push(new THREE.Vector3(Math.cos(ht) * hr, Math.sin(ht) * hr, z));
-  }
-  const helixMat = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(helixPts),
-    new THREE.LineBasicMaterial({ color: curPalette.hexAccent, transparent: true, opacity: 0.72, blending: THREE.AdditiveBlending, depthWrite: false })
-  );
-  group.add(helixMat);
-  plasmaCurves.push({ line: helixMat, rotSpeed: [-0.010, 0, 0.022 * dir], baseOpacity: 0.72 });
-
-
-
-  // 6. 3D Expanding Spherical Acoustic Shockwaves
-  const shockwaves = [];
-  const SHOCKWAVE_COUNT = 4;
-  for (let s = 0; s < SHOCKWAVE_COUNT; s++) {
-    const sPts = createCirclePoints(1.0, 72);
-    const sGeo = new THREE.BufferGeometry().setFromPoints(sPts);
-    const sLineMat = new THREE.LineBasicMaterial({
-      color: curPalette.hexPrimary,
+    this.waveMat = new THREE.PointsMaterial({
+      size: 0.20,
+      map: photonTex,
+      vertexColors: true,
       transparent: true,
-      opacity: 0,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
-    const sLine = new THREE.LineLoop(sGeo, sLineMat);
-    // Orient in different 3D planes (X-Y, Y-Z, X-Z)
-    if (s % 3 === 1) sLine.rotation.x = Math.PI * 0.5;
-    if (s % 3 === 2) sLine.rotation.y = Math.PI * 0.5;
-    group.add(sLine);
-    shockwaves.push({ line: sLine, mat: sLineMat, phase: s / SHOCKWAVE_COUNT, minR: baseRadius * 1.0, maxR: baseRadius * 2.8 });
-  }
+    this.waveMesh = new THREE.Points(this.waveGeo, this.waveMat);
+    this.sphereGroup.add(this.waveMesh);
 
-  // 7. HUD Framing Elements (Image 1 top bar and rosette)
-  const hudFraming = new THREE.Group();
-  const topBarPts = [];
-  const barY = baseRadius * 1.42;
-  const barW = baseRadius * 1.45;
-  topBarPts.push(new THREE.Vector3(-barW * 0.5, barY, 0));
-  topBarPts.push(new THREE.Vector3(barW * 0.5, barY, 0));
-  topBarPts.push(new THREE.Vector3(-barW * 0.5, barY + 0.18, 0));
-  topBarPts.push(new THREE.Vector3(barW * 0.5, barY + 0.18, 0));
-  const topBarMat = new THREE.LineSegments(
-    new THREE.BufferGeometry().setFromPoints(topBarPts),
-    new THREE.LineBasicMaterial({ color: curPalette.hexAccent, transparent: true, opacity: 0.45, blending: THREE.AdditiveBlending })
-  );
-  hudFraming.add(topBarMat);
+    // 2. Outer Crystalline Fibonacci Shell
+    const SHELL_COUNT = 11000;
+    this.shellGeo = new THREE.BufferGeometry();
+    const sPositions = new Float32Array(SHELL_COUNT * 3);
+    const sColors = new Float32Array(SHELL_COUNT * 3);
+    this.shellMeta = [];
 
-  const rosetteGroup = new THREE.Group();
-  rosetteGroup.position.set(baseRadius * 1.20, -baseRadius * 1.25, 0);
-  const rosetteR = baseRadius * 0.22;
-  rosetteGroup.add(new THREE.LineLoop(
-    new THREE.BufferGeometry().setFromPoints(createCirclePoints(rosetteR, 36)),
-    new THREE.LineBasicMaterial({ color: curPalette.hexPrimary, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending })
-  ));
-  rosetteGroup.add(new THREE.LineLoop(
-    new THREE.BufferGeometry().setFromPoints(createCirclePoints(rosetteR * 0.55, 24)),
-    new THREE.LineBasicMaterial({ color: curPalette.hexBright, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending })
-  ));
-  hudFraming.add(rosetteGroup);
-  group.add(hudFraming);
+    for (let i = 0; i < SHELL_COUNT; i++) {
+      const phi = Math.acos(1 - (2 * (i + 0.5)) / SHELL_COUNT);
+      const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+      const r = radius * (0.98 + Math.random() * 0.04);
 
-  // Dynamic Mode / Theme Switcher
-  function setMode(newMode) {
-    if (!PALETTES[newMode]) return;
-    mode = newMode;
-    curPalette = PALETTES[mode];
+      sPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+      sPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+      sPositions[i * 3 + 2] = r * Math.cos(phi);
 
-    coreMat.map = curPalette.coreMap;
-    coreMat.needsUpdate = true;
-    innerHaloMat.map = curPalette.glowMap;
-    innerHaloMat.needsUpdate = true;
+      sColors[i * 3] = pal.primary.r;
+      sColors[i * 3 + 1] = pal.primary.g;
+      sColors[i * 3 + 2] = pal.primary.b;
 
-    globeMat.uniforms.uBaseColor.value.copy(curPalette.baseColor);
-    globeMat.uniforms.uGlowColor.value.copy(curPalette.glowColor);
-    globeMat.uniforms.uGridColor.value.copy(curPalette.gridColor);
-    outerSphereMat.uniforms.uColor.value.copy(curPalette.rimColor);
+      this.shellMeta.push({
+        baseR: r,
+        phi,
+        theta,
+        twinklePhase: Math.random() * Math.PI * 2,
+        twinkleSpeed: 1.5 + Math.random() * 3.0,
+      });
+    }
+    this.shellGeo.setAttribute("position", new THREE.BufferAttribute(sPositions, 3));
+    this.shellGeo.setAttribute("color", new THREE.BufferAttribute(sColors, 3));
 
-    if (g1Mat && g1Mat.material) g1Mat.material.color.setHex(curPalette.hexBright);
-    g1Beads.forEach(b => b.material && b.material.color.setHex(curPalette.hexBright));
-    if (g2Mat && g2Mat.material) g2Mat.material.color.setHex(curPalette.hexPrimary);
-    if (g3Mat && g3Mat.material) g3Mat.material.color.setHex(curPalette.hexAccent);
-    if (g4Mat && g4Mat.material) g4Mat.material.color.setHex(curPalette.hexPrimary);
-    if (g5Mat && g5Mat.material) g5Mat.material.color.setHex(curPalette.hexAccent);
-    if (bracketMat && bracketMat.material) bracketMat.material.color.setHex(curPalette.hexBright);
+    this.shellMat = new THREE.PointsMaterial({
+      size: 0.22,
+      map: photonTex,
+      vertexColors: true,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.shellMesh = new THREE.Points(this.shellGeo, this.shellMat);
+    this.sphereGroup.add(this.shellMesh);
 
-    if (lissMat && lissMat.material) lissMat.material.color.setHex(curPalette.hexBright);
-    if (helixMat && helixMat.material) helixMat.material.color.setHex(curPalette.hexAccent);
+    // 3. Central Incandescent Core, Starburst Glint & Anamorphic Flare
+    const coreMat = new THREE.SpriteMaterial({
+      map: photonTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      opacity: 0.98,
+      depthWrite: false,
+    });
+    this.coreSprite = new THREE.Sprite(coreMat);
+    this.coreSprite.scale.set(radius * 1.5, radius * 1.5, 1);
+    this.group.add(this.coreSprite);
 
-    shockwaves.forEach(sw => sw.mat && sw.mat.color.setHex(curPalette.hexPrimary));
-    if (topBarMat && topBarMat.material) topBarMat.material.color.setHex(curPalette.hexAccent);
-  }
+    const starMat = new THREE.SpriteMaterial({
+      map: starGlintTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      opacity: 0.85,
+      depthWrite: false,
+    });
+    this.starSprite = new THREE.Sprite(starMat);
+    this.starSprite.scale.set(radius * 2.0, radius * 2.0, 1);
+    this.group.add(this.starSprite);
 
-  // Animation Update Function
-  function update(time, pulse, isMobile) {
-    const voiceExpand = 1.0 + pulse * 0.55;
-    const voiceSpeed = 1.0 + pulse * 6.5;
+    const flareMat = new THREE.SpriteMaterial({
+      map: type === "cyan" ? flareCyanTex : flareGoldTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      opacity: 0.45,
+      depthWrite: false,
+    });
+    this.flareSprite = new THREE.Sprite(flareMat);
+    this.flareSprite.scale.set(radius * 3.2, radius * 0.8, 1);
+    this.group.add(this.flareSprite);
 
-    // Update Globe Shader Uniforms
-    globeMat.uniforms.uTime.value = time * 0.0015;
-    globeMat.uniforms.uPulse.value = pulse;
+    const haloMat = new THREE.SpriteMaterial({
+      map: type === "cyan" ? haloCyanTex : haloGoldTex,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      opacity: 0.60,
+      depthWrite: false,
+    });
+    this.haloSprite = new THREE.Sprite(haloMat);
+    this.haloSprite.scale.set(radius * 3.0, radius * 3.0, 1);
+    this.group.add(this.haloSprite);
 
-    // Slowly rotate the 3D Holographic Globe Coordinate Mesh
-    globeMesh.rotation.y += 0.0028 * dir * voiceSpeed;
-    globeMesh.rotation.x = Math.sin(time * 0.0006) * 0.15;
+    // 4. Flat Concentric Orbital Rings (Stationary facing camera)
+    const ringRadii = [radius * 1.25, radius * 1.55, radius * 1.88];
+    const ringOpacities = [0.28, 0.16, 0.08];
+    this.ringMeshes = [];
 
-    // Core Singularity Pulsing
-    coreSprite.scale.setScalar(baseRadius * (1.55 + Math.sin(time * 0.002) * 0.08 + pulse * 1.3));
-    coreMat.opacity = Math.min(1.0, 0.94 + pulse * 0.06);
-    innerHalo.scale.setScalar(baseRadius * (3.6 + Math.sin(time * 0.0016) * 0.2 + pulse * 1.8));
-    innerHaloMat.opacity = 0.35 + Math.sin(time * 0.002) * 0.06 + pulse * 0.65;
-
-    // 3D Gyroscopic Gimbal Rings Precession & Acceleration
-    gimbalRings.forEach((ring, idx) => {
-      ring.group.rotation.x += ring.rotSpeed[0] * voiceSpeed;
-      ring.group.rotation.y += ring.rotSpeed[1] * voiceSpeed;
-      ring.group.rotation.z += ring.rotSpeed[2] * voiceSpeed;
-      ring.mat.opacity = Math.min(1.0, ring.baseOpacity + pulse * 0.40 + Math.sin(time * 0.003 + idx) * 0.10);
+    ringRadii.forEach((rRad, rIdx) => {
+      const rPoints = [];
+      const segs = 96;
+      for (let s = 0; s <= segs; s++) {
+        const angle = (s / segs) * Math.PI * 2;
+        rPoints.push(new THREE.Vector3(Math.cos(angle) * rRad, Math.sin(angle) * rRad, 0));
+      }
+      const rGeo = new THREE.BufferGeometry().setFromPoints(rPoints);
+      const rMat = new THREE.LineBasicMaterial({
+        color: pal.ringCol,
+        transparent: true,
+        opacity: ringOpacities[rIdx],
+        depthWrite: false,
+      });
+      const rLine = new THREE.Line(rGeo, rMat);
+      this.ringMeshes.push(rLine);
+      this.ringsGroup.add(rLine);
     });
 
-    // Rosette Widget Rotation
-    rosetteGroup.rotation.z += 0.008 + pulse * 0.025;
+    this.smoothedPulse = 0.0;
+  }
 
-    // 3D Internal Plasma Filaments Precession
-    plasmaCurves.forEach(pc => {
-      pc.line.rotation.x += pc.rotSpeed[0] * voiceSpeed;
-      pc.line.rotation.y += pc.rotSpeed[1] * voiceSpeed;
-      pc.line.rotation.z += pc.rotSpeed[2] * voiceSpeed;
-      pc.line.material.opacity = Math.min(1.0, pc.baseOpacity + pulse * 0.35);
-    });
+  update(time, targetPulse, isMobile, rotSpd = 1.0) {
+    this.smoothedPulse += (targetPulse - this.smoothedPulse) * 0.14;
+    const p = this.smoothedPulse;
+    const pal = THEMES[this.type];
 
+    // Inner sphere gentle rotation
+    this.sphereGroup.rotation.y += 0.0014 * rotSpd * (this.type === "cyan" ? 1 : -1);
+    this.sphereGroup.rotation.x = Math.sin(time * 0.8) * 0.04;
 
-    // 3D Expanding Acoustic Shockwaves
-    const sSpeed = 0.0028 + pulse * 0.018;
-    shockwaves.forEach(sw => {
-      sw.phase = (sw.phase + sSpeed) % 1.0;
-      const curR = sw.minR + sw.phase * (sw.maxR - sw.minR);
-      sw.line.scale.set(curR, curR, curR);
-      const env = Math.sin(sw.phase * Math.PI);
-      sw.mat.opacity = env * (0.12 + pulse * 0.78);
+    // 1. Silky Multi-Harmonic Fluid Waves
+    const wPos = this.waveGeo.attributes.position.array;
+    const wCol = this.waveGeo.attributes.color.array;
+    const waveSpeed = time * 0.7 * rotSpd;
+    const count = this.waveMeta.length;
+
+    for (let i = 0; i < count; i++) {
+      const m = this.waveMeta[i];
+      const fold1 = Math.sin(m.u * 3.0 + waveSpeed * 1.1) * Math.cos(m.v * 3.0 - waveSpeed * 0.8);
+      const fold2 = Math.sin(m.u * 5.0 - waveSpeed * 1.4 + m.v * 3.5) * 0.45;
+      const fold3 = Math.cos(m.v * 6.0 + waveSpeed * 0.7 + m.u * 2.0) * 0.3;
+      const swirl = Math.sin(m.u * 2.0 + m.v * 4.0 + time * 0.5) * 0.18;
+      const displacement = (fold1 + fold2 + fold3 + swirl) * (0.16 + p * 0.38);
+      const r = m.baseR * (1.0 + displacement);
+
+      const cosV = Math.cos(m.v);
+      wPos[i * 3] = r * cosV * Math.cos(m.u);
+      wPos[i * 3 + 1] = r * Math.sin(m.v);
+      wPos[i * 3 + 2] = r * cosV * Math.sin(m.u);
+
+      const crest = Math.max(0, displacement * 2.5);
+      const c = pal.primary.clone().lerp(pal.highlight, Math.min(1.0, crest * 1.25));
+      if (displacement < -0.04) c.lerp(pal.deep, 0.45);
+
+      wCol[i * 3] = c.r;
+      wCol[i * 3 + 1] = c.g;
+      wCol[i * 3 + 2] = c.b;
+    }
+    this.waveGeo.attributes.position.needsUpdate = true;
+    this.waveGeo.attributes.color.needsUpdate = true;
+
+    // 2. Outer Crystalline Shell
+    const sPos = this.shellGeo.attributes.position.array;
+    const sCol = this.shellGeo.attributes.color.array;
+    const sCount = this.shellMeta.length;
+
+    for (let i = 0; i < sCount; i++) {
+      const sm = this.shellMeta[i];
+      const twinkle = Math.sin(time * sm.twinkleSpeed + sm.twinklePhase) * 0.3 + 0.7;
+      const r = sm.baseR * (1.0 + p * 0.12 + Math.sin(time * 1.1) * 0.015);
+
+      sPos[i * 3] = r * Math.sin(sm.phi) * Math.cos(sm.theta);
+      sPos[i * 3 + 1] = r * Math.sin(sm.phi) * Math.sin(sm.theta);
+      sPos[i * 3 + 2] = r * Math.cos(sm.phi);
+
+      const normalZ = Math.cos(sm.phi);
+      const fresnel = 1.0 - Math.abs(normalZ);
+      const bright = Math.pow(fresnel, 1.8) * twinkle;
+      const c = pal.primary.clone().lerp(pal.highlight, bright * 0.85);
+
+      sCol[i * 3] = c.r * (0.4 + bright * 0.7);
+      sCol[i * 3 + 1] = c.g * (0.4 + bright * 0.7);
+      sCol[i * 3 + 2] = c.b * (0.4 + bright * 0.7);
+    }
+    this.shellGeo.attributes.position.needsUpdate = true;
+    this.shellGeo.attributes.color.needsUpdate = true;
+
+    // 3. Central Core, Starburst, Flare & Halo
+    const coreScale = this.baseRadius * 1.5 * (1.0 + p * 0.35);
+    this.coreSprite.scale.set(coreScale, coreScale, 1);
+
+    const starScale = this.baseRadius * 2.0 * (1.0 + p * 0.38);
+    this.starSprite.scale.set(starScale, starScale, 1);
+    this.starSprite.material.opacity = 0.75 + p * 0.25;
+
+    const flareW = this.baseRadius * 3.2 * (1.0 + p * 0.30);
+    const flareH = this.baseRadius * 0.8 * (1.0 + p * 0.22);
+    this.flareSprite.scale.set(flareW, flareH, 1);
+    this.flareSprite.material.opacity = 0.40 + p * 0.30;
+
+    const haloScale = this.baseRadius * 3.0 * (1.0 + p * 0.18 + Math.sin(time * 1.1) * 0.02);
+    this.haloSprite.scale.set(haloScale, haloScale, 1);
+
+    const ringMulti = 1.0 + p * 0.08;
+    this.ringMeshes.forEach((rLine, rIdx) => {
+      rLine.scale.setScalar(ringMulti);
+      rLine.material.opacity = (rIdx === 0 ? 0.28 : rIdx === 1 ? 0.16 : 0.08) + p * 0.22;
     });
   }
 
-  return {
-    group,
-    baseRadius,
-    shaderMat: globeMat,
-    sphereMesh: globeMesh,
-    update,
-    setMode,
-  };
+  setMode(type) {
+    if (this.type === type) return;
+    this.type = type;
+    const pal = THEMES[type];
+    this.flareSprite.material.map = type === "cyan" ? flareCyanTex : flareGoldTex;
+    this.haloSprite.material.map = type === "cyan" ? haloCyanTex : haloGoldTex;
+    this.ringMeshes.forEach((rLine) => {
+      rLine.material.color = new THREE.Color(pal.ringCol);
+    });
+  }
 }
 
-function createGoldenReactorOrb(baseRadius = 4.2) {
-  return createJarvisHologramOrb({ baseRadius, mode: 'gold' });
-}
-
-function createCyanPlasmaOrb(baseRadius = 4.5) {
-  return createJarvisHologramOrb({ baseRadius, mode: 'cyan' });
-}
-
-const patientSystem = createGoldenReactorOrb(4.2);
-const swastikSystem = createCyanPlasmaOrb(4.5);
+// Instantiate Dual Orbs
+// Left Orb = Gold Patient (Calling In)
+// Right Orb = Cyan Swastik AI (Answering)
+const patientSystem = new FluidOrbEntity("gold", -6.5, 2.7);
+const swastikSystem = new FluidOrbEntity("cyan", 6.2, 2.7);
 scene.add(patientSystem.group);
 scene.add(swastikSystem.group);
 
-// Global Hologram Theme Controller: 'jarvis' | 'dual' | 'cyan'
-let currentHologramTheme = 'dual';
-
-function setGlobalHologramTheme(theme) {
-  currentHologramTheme = theme;
-  if (theme === 'jarvis') {
-    patientSystem.setMode('gold');
-    swastikSystem.setMode('gold');
-  } else if (theme === 'cyan') {
-    patientSystem.setMode('cyan');
-    swastikSystem.setMode('cyan');
-  } else {
-    patientSystem.setMode('gold');
-    swastikSystem.setMode('cyan');
-  }
-  document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
-  const btn = $(theme === 'jarvis' ? 'themeJarvisBtn' : theme === 'cyan' ? 'themeCyanBtn' : 'themeDualBtn');
-  if (btn) btn.classList.add('active');
-}
-
-// Bind theme switchers on DOM ready
-if (typeof window !== 'undefined') {
-  const attachThemeHandlers = () => {
-    const jBtn = $('themeJarvisBtn');
-    const dBtn = $('themeDualBtn');
-    const cBtn = $('themeCyanBtn');
-    if (jBtn) jBtn.onclick = () => setGlobalHologramTheme('jarvis');
-    if (dBtn) dBtn.onclick = () => setGlobalHologramTheme('dual');
-    if (cBtn) cBtn.onclick = () => setGlobalHologramTheme('cyan');
-  };
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', attachThemeHandlers);
-  } else {
-    attachThemeHandlers();
-  }
-}
-
 // ------------------------------------------------------------------
-// Swastik AI Thinking Mode Orbit Ring
+// Connecting Luminous Synaptic Neural Beam (Flowing between the Orbs)
 // ------------------------------------------------------------------
-const thinkingGroup = new THREE.Group();
-thinkingGroup.rotation.set(-0.25, 0.35, 0);
-const thinkingNodesCount = 6;
-const thinkingNodes = [];
-for (let i = 0; i < thinkingNodesCount; i++) {
-  const tMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(0.35, 12, 12),
-    new THREE.MeshBasicMaterial({
-      color: 0x00FFFF,
-      transparent: true,
-      opacity: 0.9,
-    })
-  );
-  thinkingGroup.add(tMesh);
-  thinkingNodes.push(tMesh);
-}
-thinkingGroup.visible = false;
-swastikSystem.group.add(thinkingGroup);
+const BRIDGE_COUNT = 360;
+const bridgeGeo = new THREE.BufferGeometry();
+const bridgePositions = new Float32Array(BRIDGE_COUNT * 3);
+const bridgeColors = new Float32Array(BRIDGE_COUNT * 3);
+const bridgeMeta = [];
 
-// ------------------------------------------------------------------
-// 3D Neural Synaptic Particle Stream (Helical Bridge between Spheres)
-// ------------------------------------------------------------------
-const STREAM_PARTICLE_COUNT = 360;
-const streamPositions = new Float32Array(STREAM_PARTICLE_COUNT * 3);
-const streamColors = new Float32Array(STREAM_PARTICLE_COUNT * 3);
-const streamData = [];
-
-for (let i = 0; i < STREAM_PARTICLE_COUNT; i++) {
-  const isDust = i % 3 === 0;
-  streamData.push({
-    progress: Math.random(),
-    speed: isDust ? (0.0018 + Math.random() * 0.0028) : (0.0028 + Math.random() * 0.0045),
-    strand: Math.floor(Math.random() * 4),
-    phase: Math.random() * Math.PI * 2,
-    radiusJitter: (Math.random() - 0.5) * 0.85,
-    isDust: isDust,
-    sparkleRate: 2.5 + Math.random() * 5.0,
+for (let i = 0; i < BRIDGE_COUNT; i++) {
+  const strandId = i % 3; // 3 intertwined helical strands
+  bridgeMeta.push({
+    progress: i / BRIDGE_COUNT,
+    speed: 0.0028 + (i % 7) * 0.0008,
+    strandId,
+    phaseOffset: strandId * ((Math.PI * 2) / 3) + (i % 5) * 0.15,
+    helixRadius: 0.26 + (i % 4) * 0.12,
+    yJitter: (Math.random() - 0.5) * 0.22,
+    zJitter: (Math.random() - 0.5) * 0.22,
   });
+  bridgePositions[i * 3] = 0;
+  bridgePositions[i * 3 + 1] = 0;
+  bridgePositions[i * 3 + 2] = 0;
+  bridgeColors[i * 3] = 1;
+  bridgeColors[i * 3 + 1] = 1;
+  bridgeColors[i * 3 + 2] = 1;
 }
+bridgeGeo.setAttribute("position", new THREE.BufferAttribute(bridgePositions, 3));
+bridgeGeo.setAttribute("color", new THREE.BufferAttribute(bridgeColors, 3));
 
-const streamGeo = new THREE.BufferGeometry();
-streamGeo.setAttribute("position", new THREE.BufferAttribute(streamPositions, 3));
-streamGeo.setAttribute("color", new THREE.BufferAttribute(streamColors, 3));
-
-const streamMat = new THREE.PointsMaterial({
-  size: 3.4,
-  map: dotTexture,
+const bridgeMat = new THREE.PointsMaterial({
+  size: 0.28,
+  map: photonTex,
   vertexColors: true,
   transparent: true,
   blending: THREE.AdditiveBlending,
-  opacity: 0.92,
   depthWrite: false,
 });
-const streamPoints = new THREE.Points(streamGeo, streamMat);
-scene.add(streamPoints);
+const bridgePoints = new THREE.Points(bridgeGeo, bridgeMat);
+scene.add(bridgePoints);
 
 // ------------------------------------------------------------------
-// 3D Connecting Quantum Filament (Axis Line)
+// 3D Ambient Cosmic Starfield
 // ------------------------------------------------------------------
-const axisLineGeo = new THREE.BufferGeometry().setFromPoints([
-  new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 0, 0),
-]);
-const axisLineMat = new THREE.LineDashedMaterial({
-  color: 0x64748B,
-  dashSize: 1.5,
-  gapSize: 2.5,
-  transparent: true,
-  opacity: 0.25,
-});
-const axisLine = new THREE.Line(axisLineGeo, axisLineMat);
-scene.add(axisLine);
-
-// ------------------------------------------------------------------
-// 3D Interactive Lightning Arcs
-// ------------------------------------------------------------------
-const LIGHTNING_SEGMENTS = 16;
-const lightningPoints = [];
-for (let i = 0; i <= LIGHTNING_SEGMENTS; i++) {
-  lightningPoints.push(new THREE.Vector3(0, 0, 0));
+const STAR_COUNT = 150;
+const starPositions = new Float32Array(STAR_COUNT * 3);
+for (let i = 0; i < STAR_COUNT; i++) {
+  starPositions[i * 3] = (Math.random() - 0.5) * 50;
+  starPositions[i * 3 + 1] = (Math.random() - 0.5) * 35;
+  starPositions[i * 3 + 2] = (Math.random() - 0.5) * 30 - 5;
 }
-const lightningGeo = new THREE.BufferGeometry().setFromPoints(lightningPoints);
-const lightningMat = new THREE.LineBasicMaterial({
-  color: 0x64F0FF,
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+const starMat = new THREE.PointsMaterial({
+  size: 0.12,
+  map: photonTex,
+  color: 0x94A3B8,
   transparent: true,
-  opacity: 0,
   blending: THREE.AdditiveBlending,
-  linewidth: 1.5,
+  opacity: 0.45,
+  depthWrite: false,
 });
-const lightningLine = new THREE.Line(lightningGeo, lightningMat);
-scene.add(lightningLine);
-
-let lastLightningTime = 0;
-
-function spawnLightning() {
-  const p1 = patientSystem.group.position;
-  const p2 = swastikSystem.group.position;
-  const posArray = lightningGeo.attributes.position.array;
-
-  for (let i = 0; i <= LIGHTNING_SEGMENTS; i++) {
-    const t = i / LIGHTNING_SEGMENTS;
-    const envelope = Math.sin(t * Math.PI);
-    const jitter = envelope * 4.5;
-    const idx = i * 3;
-    posArray[idx] = p1.x + (p2.x - p1.x) * t + (Math.random() - 0.5) * jitter;
-    posArray[idx + 1] = p1.y + (p2.y - p1.y) * t + (Math.random() - 0.5) * jitter;
-    posArray[idx + 2] = p1.z + (p2.z - p1.z) * t + (Math.random() - 0.5) * jitter;
-  }
-  lightningGeo.attributes.position.needsUpdate = true;
-  lightningMat.opacity = 0.95;
-}
+const starPoints = new THREE.Points(starGeo, starMat);
+scene.add(starPoints);
 
 // ------------------------------------------------------------------
-// 3D Expanding Shockwaves
+// 3D Shockwaves & Celebration Burst
 // ------------------------------------------------------------------
 let activeShockwaves = [];
-
 function triggerShockwave(targetOrb) {
   const isPatient = targetOrb === leftOrb;
   const targetGroup = isPatient ? patientSystem.group : swastikSystem.group;
-  const color = isPatient ? 0xF5A623 : 0x14C8B2;
+  const color = isPatient ? 0xFF9E00 : 0x00E5FF;
 
-  const ringGeo = new THREE.RingGeometry(targetGroup.scale.x * 6.5, targetGroup.scale.x * 6.7, 64);
+  const ringGeo = new THREE.RingGeometry(2.35, 2.48, 64);
   const ringMat = new THREE.MeshBasicMaterial({
     color: color,
     side: THREE.DoubleSide,
@@ -1119,9 +746,6 @@ function triggerShockwave(targetOrb) {
   });
 }
 
-// ------------------------------------------------------------------
-// 3D Booking Celebration Particle Burst
-// ------------------------------------------------------------------
 let burstMesh = null;
 let burstData = [];
 
@@ -1136,7 +760,7 @@ function triggerBookingBurst() {
   for (let i = 0; i < burstCount; i++) {
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.acos(Math.random() * 2 - 1);
-    const speed = 0.35 + Math.random() * 0.95;
+    const speed = 0.25 + Math.random() * 0.65;
 
     burstData.push({
       x: origin.x,
@@ -1150,9 +774,9 @@ function triggerBookingBurst() {
     });
 
     const isCyan = Math.random() > 0.4;
-    bColors[i * 3] = isCyan ? 0.2 : 0.45;
-    bColors[i * 3 + 1] = isCyan ? 0.95 : 0.92;
-    bColors[i * 3 + 2] = isCyan ? 0.9 : 0.72;
+    bColors[i * 3] = isCyan ? 0.0 : 1.0;
+    bColors[i * 3 + 1] = isCyan ? 0.9 : 0.65;
+    bColors[i * 3 + 2] = isCyan ? 1.0 : 0.0;
   }
 
   const bGeo = new THREE.BufferGeometry();
@@ -1160,8 +784,8 @@ function triggerBookingBurst() {
   bGeo.setAttribute("color", new THREE.BufferAttribute(bColors, 3));
 
   const bMat = new THREE.PointsMaterial({
-    size: 2.8,
-    map: dotTexture,
+    size: 0.22,
+    map: photonTex,
     vertexColors: true,
     transparent: true,
     blending: THREE.AdditiveBlending,
@@ -1178,31 +802,7 @@ function triggerBookingBurst() {
 }
 
 // ------------------------------------------------------------------
-// 3D Ambient Cosmic Starfield
-// ------------------------------------------------------------------
-const STAR_COUNT = 180;
-const starPositions = new Float32Array(STAR_COUNT * 3);
-for (let i = 0; i < STAR_COUNT; i++) {
-  starPositions[i * 3] = (Math.random() - 0.5) * 140;
-  starPositions[i * 3 + 1] = (Math.random() - 0.5) * 90;
-  starPositions[i * 3 + 2] = (Math.random() - 0.5) * 120 - 20;
-}
-const starGeo = new THREE.BufferGeometry();
-starGeo.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
-const starMat = new THREE.PointsMaterial({
-  size: 1.3,
-  map: dotTexture,
-  color: 0x94A3B8,
-  transparent: true,
-  blending: THREE.AdditiveBlending,
-  opacity: 0.4,
-  depthWrite: false,
-});
-const starPoints = new THREE.Points(starGeo, starMat);
-scene.add(starPoints);
-
-// ------------------------------------------------------------------
-// Interactive 3D Orbit Drag & Lenis-Inspired Momentum Physics
+// Interactive 3D Orbit Drag & Parallax Physics
 // ------------------------------------------------------------------
 let targetMouseX = 0;
 let targetMouseY = 0;
@@ -1220,7 +820,6 @@ let dragVelX = 0;
 let dragVelY = 0;
 
 window.addEventListener("pointerdown", (e) => {
-  // Allow interactive 3D rotation when dragging background / canvas
   const isCard = e.target.closest(".hud-card, .subtitles-container, .hud-header, button, a");
   if (!isCard) {
     isDragging = true;
@@ -1255,7 +854,9 @@ window.addEventListener("pointerup", () => {
   const dragHint = $("dragHint");
   if (dragHint) dragHint.style.opacity = "1";
 });
-window.addEventListener("pointercancel", () => { isDragging = false; });
+window.addEventListener("pointercancel", () => {
+  isDragging = false;
+});
 
 // ------------------------------------------------------------------
 // Responsive 3D Layout & Projection
@@ -1278,27 +879,26 @@ function resize() {
   const visibleWidth = visibleHeight * camera.aspect;
 
   if (isMobile) {
-    // Stacked vertically on mobile / portrait view
     leftTargetPos.set(0, visibleHeight * 0.18, 0);
     rightTargetPos.set(0, -visibleHeight * 0.14, 0);
-    patientSystem._baseGroupScale = 0.68;
-    swastikSystem._baseGroupScale = 0.70;
+    patientSystem._baseGroupScale = 0.75;
+    swastikSystem._baseGroupScale = 0.75;
   } else if (isTablet) {
-    leftTargetPos.set(-visibleWidth * 0.22, 0, 0);
+    leftTargetPos.set(-visibleWidth * 0.24, 0, 0);
     rightTargetPos.set(visibleWidth * 0.22, 0, 0);
-    patientSystem._baseGroupScale = 0.9;
-    swastikSystem._baseGroupScale = 0.92;
+    patientSystem._baseGroupScale = 0.88;
+    swastikSystem._baseGroupScale = 0.88;
   } else {
-    leftTargetPos.set(-visibleWidth * 0.23, 0, 0);
-    rightTargetPos.set(visibleWidth * 0.23, 0, 0);
+    leftTargetPos.set(-visibleWidth * 0.24, 0, 0);
+    rightTargetPos.set(visibleWidth * 0.22, 0, 0);
     patientSystem._baseGroupScale = 1.0;
-    swastikSystem._baseGroupScale = 1.02;
+    swastikSystem._baseGroupScale = 1.0;
   }
 }
 window.addEventListener("resize", resize);
 
 // ------------------------------------------------------------------
-// Inspira UI 3D Card Tilt Engine (CardContainer + CardItem)
+// Card 3D Tilt Engine (CardContainer + CardItem)
 // ------------------------------------------------------------------
 function init3DCardTilt() {
   const cards = document.querySelectorAll(".hud-card, .subtitles-container, .hud-header");
@@ -1365,203 +965,166 @@ function animate(time) {
   const delta = (time - lastTime) * 0.001;
   lastTime = time;
 
-  // Update Inspira UI Border Beam Dynamic Rotation Angle
+  // Inspira UI Border Beam Dynamic Rotation
   const beamAngle = (time * 0.08) % 360;
   document.documentElement.style.setProperty("--beam-angle", `${beamAngle.toFixed(1)}deg`);
 
-  // Check thinking mode transition
-  if (lastUserSpeechTime > 0 && !speaking && isCallActive) {
-    const elapsed = performance.now() - lastUserSpeechTime;
-    if (elapsed > 800 && elapsed < 15000) {
-      thinkingMode = true;
+  // Simulated Conversation Loop when idle / not on a live call
+  let simAgentPulse = 0;
+  let simPatientPulse = 0;
+
+  if (!isCallActive && simActive) {
+    simTimer += delta * 1000;
+    const curSim = SIM_CONVERSATION[simIdx];
+
+    if (curSim) {
+      if (curSim.speaker === "swastik") {
+        simAgentPulse = curSim.pulseAgent + Math.sin(time * 0.004) * 0.12 + Math.cos(time * 0.009) * 0.08;
+        simPatientPulse = 0.02;
+      } else {
+        simPatientPulse = curSim.pulsePatient + Math.cos(time * 0.0045) * 0.14 + Math.sin(time * 0.008) * 0.09;
+        simAgentPulse = 0.02;
+      }
+
+      if (simTimer > curSim.duration) {
+        simTimer = 0;
+        simIdx = (simIdx + 1) % SIM_CONVERSATION.length;
+        const nextSim = SIM_CONVERSATION[simIdx];
+        setStage(nextSim.stage);
+        setSubtitles(nextSim.speaker, nextSim.hindi);
+
+        if (nextSim.showCalendar && calendarCard && !calendarCard.classList.contains("dismissed")) {
+          calendarCard.classList.add("visible");
+        }
+        if (nextSim.showBooking) {
+          const slot1100 = $("slot-1100");
+          if (slot1100) {
+            slot1100.className = "slot-row booked";
+            slot1100.innerHTML = `<span>11:00 · CONSULTATION</span><span class="badge-booked">BOOKED</span>`;
+          }
+          triggerBookingBurst();
+        }
+        if (nextSim.showWhatsApp && waCard && !waCard.classList.contains("dismissed")) {
+          waCard.classList.add("visible");
+        }
+      }
     }
   }
 
-  // Audio Pulses
-  const userPulse = Math.min(1.2, userRMS * 8.5);
-  const realAgentLevel = getAgentAudioLevel();
-  const agentPulse = speaking
-    ? Math.min(1.2, Math.max(realAgentLevel * 2.4, 0.48 + Math.sin(time * 0.014) * 0.28 + Math.sin(time * 0.033) * 0.18))
-    : 0;
-  const isCommunicating = userPulse > 0.03 || speaking;
-
-  // Update Shader Uniforms (if defined)
-  if (patientSystem.shaderMat && patientSystem.shaderMat.uniforms) {
-    patientSystem.shaderMat.uniforms.uTime.value = time * 0.001;
-    patientSystem.shaderMat.uniforms.uPulse.value = userPulse;
-  }
-  if (swastikSystem.shaderMat && swastikSystem.shaderMat.uniforms) {
-    swastikSystem.shaderMat.uniforms.uTime.value = time * 0.001;
-    swastikSystem.shaderMat.uniforms.uPulse.value = agentPulse;
-  }
-  if (patientSystem.sphereMesh) patientSystem.sphereMesh.scale.setScalar(1.0 + userPulse * 0.75);
-  if (swastikSystem.sphereMesh) swastikSystem.sphereMesh.scale.setScalar(1.0 + agentPulse * 0.75);
+  // Audio Pulses (Real Live Audio if active, otherwise Simulated Audio)
+  let userPulse = isCallActive ? Math.min(1.2, userRMS * 8.5) : simPatientPulse;
+  let realAgentLevel = getAgentAudioLevel();
+  let agentPulse = isCallActive
+    ? (speaking ? Math.min(1.2, Math.max(realAgentLevel * 2.4, 0.48 + Math.sin(time * 0.014) * 0.28)) : 0)
+    : simAgentPulse;
 
   // Dynamic Speech-Reactive Orb Sizing:
-  // When Patient speaks: Patient orb grows up to 1.55x (55% larger!),
-  // while Swastik orb subtly eases into an attentive listening state (0.92x).
-  // When Swastik speaks: Swastik orb grows up to 1.58x (58% larger!),
-  // while Patient orb subtly eases into an attentive listening state (0.92x).
-  // When idle: both relax at base scale (1.0x) with gentle organic breathing.
+  // When Patient speaks: Patient orb expands smoothly up to 1.45x
+  // When Swastik speaks: Swastik orb expands smoothly up to 1.48x
   const pBaseScale = patientSystem._baseGroupScale || 1.0;
-  const sBaseScale = swastikSystem._baseGroupScale || 1.02;
+  const sBaseScale = swastikSystem._baseGroupScale || 1.0;
 
   let pTargetScale = pBaseScale;
   let sTargetScale = sBaseScale;
 
-  if (userPulse > 0.03) {
-    // Patient speaking: smooth scale expansion
-    pTargetScale = pBaseScale * (1.0 + userPulse * 0.32);
+  if (userPulse > 0.05) {
+    pTargetScale = pBaseScale * (1.0 + userPulse * 0.28);
     sTargetScale = sBaseScale * Math.max(0.92, 1.0 - userPulse * 0.06);
-  } else if (speaking) {
-    // Swastik AI speaking: smooth scale expansion
-    sTargetScale = sBaseScale * (1.0 + agentPulse * 0.34);
+  } else if (agentPulse > 0.05) {
+    sTargetScale = sBaseScale * (1.0 + agentPulse * 0.30);
     pTargetScale = pBaseScale * Math.max(0.92, 1.0 - agentPulse * 0.06);
   } else {
-    // Idle ambient breathing
-    pTargetScale = pBaseScale * (1.0 + Math.sin(time * 0.002) * 0.025);
-    sTargetScale = sBaseScale * (1.0 + Math.sin(time * 0.002 + 1.5) * 0.025);
+    // Ambient breathing
+    pTargetScale = pBaseScale * (1.0 + Math.sin(time * 0.002) * 0.02);
+    sTargetScale = sBaseScale * (1.0 + Math.sin(time * 0.002 + 1.5) * 0.02);
   }
 
-  // Snappy yet organic lerp for instantaneous speech responsiveness
   const pCurScale = patientSystem.group.scale.x;
   const sCurScale = swastikSystem.group.scale.x;
-  const pNewScale = pCurScale + (pTargetScale - pCurScale) * 0.14;
-  const sNewScale = sCurScale + (sTargetScale - sCurScale) * 0.14;
-  patientSystem.group.scale.setScalar(pNewScale);
-  swastikSystem.group.scale.setScalar(sNewScale);
+  patientSystem.group.scale.setScalar(pCurScale + (pTargetScale - pCurScale) * 0.12);
+  swastikSystem.group.scale.setScalar(sCurScale + (sTargetScale - sCurScale) * 0.12);
 
-  // Update Golden Sci-Fi Arc Reactor Orb (Image 1)
-  if (patientSystem && patientSystem.update) {
-    patientSystem.update(time, userPulse, isMobile);
-  }
+  // Update Fluid Wave Orbs
+  patientSystem.update(time * 0.001, userPulse, isMobile, 0.9);
+  swastikSystem.update(time * 0.001, agentPulse, isMobile, 0.9);
 
-  // Update Electric Cyan Volumetric Plasma Nebula Orb (Image 2)
-  if (swastikSystem && swastikSystem.update) {
-    swastikSystem.update(time, agentPulse, isMobile);
-  }
-
-  // Thinking Mode Indicator Animation
-  const thinkingDotsEl = $("aiThinkingDots");
-  if (thinkingMode) {
-    thinkingGroup.visible = true;
-    if (thinkingDotsEl) thinkingDotsEl.style.display = "inline-flex";
-    thinkingGroup.rotation.z += 0.035;
-    for (let i = 0; i < thinkingNodesCount; i++) {
-      const angle = (i / thinkingNodesCount) * Math.PI * 2;
-      const r = swastikSystem.baseRadius * (1.45 + Math.sin(time * 0.006 + i) * 0.1);
-      thinkingNodes[i].position.set(Math.cos(angle) * r, Math.sin(angle) * r, 0);
-    }
-  } else {
-    thinkingGroup.visible = false;
-    if (thinkingDotsEl) thinkingDotsEl.style.display = "none";
-  }
-
-  // Harmonic Floating Motion (Levitation & Natural Breathing)
-  const floatPatientX = Math.sin(time * 0.0009) * 0.5 + Math.cos(time * 0.0018) * 0.2;
-  const floatPatientY = Math.cos(time * 0.0012) * 0.65 + Math.sin(time * 0.0023) * 0.25;
-  const floatPatientZ = Math.sin(time * 0.0015) * 0.35;
-
-  const floatSwastikX = -Math.cos(time * 0.0010) * 0.5 + Math.sin(time * 0.0019) * 0.2;
-  const floatSwastikY = Math.sin(time * 0.0013) * 0.65 - Math.cos(time * 0.0025) * 0.25;
-  const floatSwastikZ = Math.cos(time * 0.0014) * 0.35;
-
-  // Audio Micro-Vibration & Physical Resonance
-  const vibP = userPulse > 0.05 ? (Math.random() - 0.5) * userPulse * 0.15 : 0;
-  const vibS = agentPulse > 0.05 ? (Math.random() - 0.5) * agentPulse * 0.15 : 0;
+  // Harmonic Floating Motion (Natural Levitation)
+  const floatPatientX = Math.sin(time * 0.0009) * 0.15;
+  const floatPatientY = Math.cos(time * 0.0012) * 0.25;
+  const floatSwastikX = -Math.cos(time * 0.0010) * 0.15;
+  const floatSwastikY = Math.sin(time * 0.0013) * 0.25;
 
   patientSystem.group.position.set(
     leftTargetPos.x + floatPatientX,
-    leftTargetPos.y + floatPatientY + vibP,
-    leftTargetPos.z + floatPatientZ
+    leftTargetPos.y + floatPatientY,
+    leftTargetPos.z
   );
   swastikSystem.group.position.set(
     rightTargetPos.x + floatSwastikX,
-    rightTargetPos.y + floatSwastikY + vibS,
-    rightTargetPos.z + floatSwastikZ
+    rightTargetPos.y + floatSwastikY,
+    rightTargetPos.z
   );
 
-  // Update 3D Connecting Axis Filament (connect outer rims, scaling dynamically with orb size)
-  const rOffsetP = patientSystem.baseRadius * 1.08 * patientSystem.group.scale.x;
-  const rOffsetS = swastikSystem.baseRadius * 1.08 * swastikSystem.group.scale.x;
-  const axisPositions = axisLine.geometry.attributes.position.array;
-  axisPositions[0] = patientSystem.group.position.x + rOffsetP;
-  axisPositions[1] = patientSystem.group.position.y;
-  axisPositions[2] = patientSystem.group.position.z;
-  axisPositions[3] = swastikSystem.group.position.x - rOffsetS;
-  axisPositions[4] = swastikSystem.group.position.y;
-  axisPositions[5] = swastikSystem.group.position.z;
-  axisLine.geometry.attributes.position.needsUpdate = true;
-  axisLine.computeLineDistances();
+  // Update Connecting Luminous Synaptic Neural Beam
+  const p1 = patientSystem.group.position;
+  const p2 = swastikSystem.group.position;
+  const bPos = bridgeGeo.attributes.position.array;
+  const bCol = bridgeGeo.attributes.color.array;
 
-  // Update 3D Helical Neural Synaptic Particle Stream (Connecting outer rims)
-  const sPos = streamGeo.attributes.position.array;
-  const sCol = streamGeo.attributes.color.array;
-  const p1 = new THREE.Vector3(patientSystem.group.position.x + rOffsetP, patientSystem.group.position.y, patientSystem.group.position.z);
-  const p2 = new THREE.Vector3(swastikSystem.group.position.x - rOffsetS, swastikSystem.group.position.y, swastikSystem.group.position.z);
+  const flowDir = agentPulse > userPulse ? -1.0 : 1.0;
+  const bridgeSpeed = (userPulse > 0.05 || agentPulse > 0.05) ? 3.0 : 1.2;
+  const waveTime = time * 0.0035;
 
-  // Stream flows according to speaker activity
-  let flowDir = 1.0;
-  if (speaking && userPulse < 0.05) {
-    flowDir = -1.0; // flow from Swastik to Patient
-  }
-  const streamSpeedBoost = isCommunicating ? 3.4 : 1.0;
-
-  for (let i = 0; i < STREAM_PARTICLE_COUNT; i++) {
-    const pt = streamData[i];
-    pt.progress += pt.speed * streamSpeedBoost * flowDir;
+  for (let i = 0; i < BRIDGE_COUNT; i++) {
+    const pt = bridgeMeta[i];
+    pt.progress += pt.speed * bridgeSpeed * flowDir;
     if (pt.progress > 1.0) pt.progress -= 1.0;
     if (pt.progress < 0.0) pt.progress += 1.0;
 
     const t = pt.progress;
-    // Multi-strand DNA helix with organic twist and voice expansion
-    const strandAngle = t * Math.PI * 6 + time * 0.0035 + pt.strand * 1.57 + pt.phase;
-    const voiceExpand = isCommunicating ? (1.0 + Math.max(userPulse, agentPulse) * 0.65) : 1.0;
-    const baseHelixR = (pt.isDust ? 0.9 : 1.5) + Math.sin(t * Math.PI) * 1.8;
-    const helixRadius = (baseHelixR * voiceExpand + pt.radiusJitter) * (isMobile ? 0.6 : 1.0);
+    const taper = Math.sin(t * Math.PI);
+
+    // Helical vortex wave motion
+    const angle = t * Math.PI * 4 + waveTime * 4.0 + pt.phaseOffset;
+    const helixY = Math.sin(angle) * pt.helixRadius * taper;
+    const helixZ = Math.cos(angle) * pt.helixRadius * taper;
+    const archY = Math.sin(t * Math.PI) * 0.45;
 
     const baseX = p1.x + (p2.x - p1.x) * t;
-    const baseY = p1.y + (p2.y - p1.y) * t;
-    const baseZ = p1.z + (p2.z - p1.z) * t;
+    const baseY = p1.y + (p2.y - p1.y) * t + archY + helixY + pt.yJitter * taper;
+    const baseZ = p1.z + (p2.z - p1.z) * t + helixZ + pt.zJitter * taper;
 
-    // Cross vector offsets for 3D helix with harmonic flutter
-    const flutter = Math.sin(time * 0.004 + t * 12.0) * 0.25;
-    const idx = i * 3;
-    if (isMobile) {
-      sPos[idx] = baseX + Math.cos(strandAngle) * helixRadius;
-      sPos[idx + 1] = baseY + flutter;
-      sPos[idx + 2] = baseZ + Math.sin(strandAngle) * helixRadius;
+    bPos[i * 3] = baseX;
+    bPos[i * 3 + 1] = baseY;
+    bPos[i * 3 + 2] = baseZ;
+
+    // Luminous Energy Wave: traveling quantum brightness packets
+    const packet = Math.pow(Math.max(0, Math.sin((t * 2.5 - waveTime * 2.2) * Math.PI * 2)), 5) * 1.6;
+    const voiceIntensity = 1.0 + Math.max(userPulse, agentPulse) * 1.5 + packet;
+
+    // Dynamic Color Gradient: Gold (t=0) -> Emerald (t=0.5) -> Electric Cyan (t=1)
+    let cr, cg, cb;
+    if (t < 0.5) {
+      const u = t * 2.0;
+      cr = THREE.MathUtils.lerp(1.0, 0.08, u);
+      cg = THREE.MathUtils.lerp(0.68, 0.88, u);
+      cb = THREE.MathUtils.lerp(0.08, 0.75, u);
     } else {
-      sPos[idx] = baseX;
-      sPos[idx + 1] = baseY + Math.sin(strandAngle) * helixRadius + flutter;
-      sPos[idx + 2] = baseZ + Math.cos(strandAngle) * helixRadius;
+      const u = (t - 0.5) * 2.0;
+      cr = THREE.MathUtils.lerp(0.08, 0.0, u);
+      cg = THREE.MathUtils.lerp(0.88, 0.92, u);
+      cb = THREE.MathUtils.lerp(0.75, 1.0, u);
     }
 
-    // Color gradient & dynamic energy boost:
-    // Gold near Patient -> Cyan/Teal near Swastik, sparkling with voice surges!
-    const sparkle = Math.sin(time * 0.001 * pt.sparkleRate + pt.phase) * 0.3 + 0.7;
-    const surge = isCommunicating ? 0.25 : 0.0;
-    sCol[idx] = THREE.MathUtils.clamp(THREE.MathUtils.lerp(1.0, 0.15, t) * sparkle + surge, 0, 1);
-    sCol[idx + 1] = THREE.MathUtils.clamp(THREE.MathUtils.lerp(0.75, 0.95, t) * sparkle + surge, 0, 1);
-    sCol[idx + 2] = THREE.MathUtils.clamp(THREE.MathUtils.lerp(0.2, 1.0, t) * sparkle + surge, 0, 1);
+    const lum = Math.min(2.4, (0.4 + taper * 0.8) * voiceIntensity);
+    bCol[i * 3] = Math.min(1.0, cr * lum);
+    bCol[i * 3 + 1] = Math.min(1.0, cg * lum);
+    bCol[i * 3 + 2] = Math.min(1.0, cb * lum);
   }
-  streamGeo.attributes.position.needsUpdate = true;
-  streamGeo.attributes.color.needsUpdate = true;
+  bridgeGeo.attributes.position.needsUpdate = true;
+  bridgeGeo.attributes.color.needsUpdate = true;
 
-  // Stream particle size reacts dynamically to speech energy!
-  streamMat.size = 3.4 + Math.max(userPulse, agentPulse) * 2.6;
-  streamMat.opacity = Math.min(1.0, 0.88 + Math.max(userPulse, agentPulse) * 0.12);
-
-  // 3D Lightning Arc during Voice Communication
-  if (isCommunicating && time - lastLightningTime > 320 + Math.random() * 650) {
-    spawnLightning();
-    lastLightningTime = time;
-  }
-  if (lightningMat.opacity > 0) {
-    lightningMat.opacity -= 0.045;
-  }
-
-  // Update 3D Shockwaves
+  // Update Shockwaves
   for (let i = activeShockwaves.length - 1; i >= 0; i--) {
     const sw = activeShockwaves[i];
     sw.scale += sw.speed;
@@ -1577,10 +1140,10 @@ function animate(time) {
     }
   }
 
-  // Update 3D Booking Celebration Particles
+  // Update Celebration Burst
   if (burstMesh) {
     let anyAlive = false;
-    const bPos = burstMesh.geometry.attributes.position.array;
+    const bArray = burstMesh.geometry.attributes.position.array;
     for (let i = 0; i < burstData.length; i++) {
       const b = burstData[i];
       if (b.life <= 0) continue;
@@ -1594,9 +1157,9 @@ function animate(time) {
       b.life -= b.decay;
 
       const idx = i * 3;
-      bPos[idx] = b.x;
-      bPos[idx + 1] = b.y;
-      bPos[idx + 2] = b.z;
+      bArray[idx] = b.x;
+      bArray[idx + 1] = b.y;
+      bArray[idx + 2] = b.z;
     }
     burstMesh.geometry.attributes.position.needsUpdate = true;
     burstMesh.material.opacity = Math.max(0, burstData[0]?.life || 0);
@@ -1610,23 +1173,19 @@ function animate(time) {
     }
   }
 
-  // Twinkle Ambient Starfield
-  starMat.opacity = 0.35 + Math.sin(time * 0.001) * 0.1;
-
-  // 3D Parallax Camera Motion & Lenis Momentum Damping
+  // 3D Parallax Camera Motion & Drag Inertia
   currentMouseX += (targetMouseX - currentMouseX) * 0.05;
   currentMouseY += (targetMouseY - currentMouseY) * 0.05;
-  camera.position.x = currentMouseX * 5.5;
-  camera.position.y = -currentMouseY * 3.8;
+  camera.position.x = currentMouseX * 1.5;
+  camera.position.y = -currentMouseY * 1.0;
   camera.lookAt(0, 0, 0);
 
-  // Apply Lenis Momentum Drag to 3D Scene Rotation
   if (!isDragging) {
     rotTargetX += dragVelX;
     rotTargetY += dragVelY;
-    dragVelX *= 0.92; // Inertia damping
+    dragVelX *= 0.92;
     dragVelY *= 0.92;
-    rotTargetX *= 0.985; // Spring return to neutral
+    rotTargetX *= 0.985;
     rotTargetY *= 0.985;
   }
   rotCurrentX += (rotTargetX - rotCurrentX) * 0.08;
@@ -1637,7 +1196,7 @@ function animate(time) {
   // Render 3D Scene
   renderer.render(scene, camera);
 
-  // Screen Space Projections for HUD overlays & Stage Status Badge
+  // Screen Space Projections for HUD Overlays & Labels
   patientSystem.group.getWorldPosition(projVector);
   projVector.project(camera);
   const leftScreenX = (projVector.x * 0.5 + 0.5) * width;
@@ -1656,10 +1215,9 @@ function animate(time) {
   const badgeContainer = $("stageBadgeContainer");
   if (badgeContainer) {
     badgeContainer.style.left = `${leftScreenX}px`;
-    badgeContainer.style.top = `${leftScreenY - (isMobile ? 78 : 94)}px`;
+    badgeContainer.style.top = `${leftScreenY - (isMobile ? 120 : 155)}px`;
   }
 
-  // Dynamically position orb labels on desktop/tablet
   const orbLabels = document.querySelector(".orb-labels-container");
   if (orbLabels && !isMobile) {
     const pBlock = orbLabels.querySelector(".patient");
@@ -1667,29 +1225,29 @@ function animate(time) {
     if (pBlock) {
       pBlock.style.position = "absolute";
       pBlock.style.left = `${leftScreenX}px`;
-      pBlock.style.top = `${leftScreenY + 75}px`;
+      pBlock.style.top = `${leftScreenY + 140}px`;
       pBlock.style.transform = "translateX(-50%)";
       pBlock.style.margin = "0";
     }
     if (sBlock) {
       sBlock.style.position = "absolute";
       sBlock.style.left = `${rightScreenX}px`;
-      sBlock.style.top = `${rightScreenY + 75}px`;
+      sBlock.style.top = `${rightScreenY + 140}px`;
       sBlock.style.transform = "translateX(-50%)";
       sBlock.style.margin = "0";
     }
   }
 
-  // Update Mini Equalizer Bars
+  // Mini Equalizer Bars
   if (waveBars && waveBars.length) {
-    const activeLevel = speaking ? agentPulse : userPulse;
+    const activeLevel = Math.max(userPulse, agentPulse);
     waveBars.forEach((bar, idx) => {
       const h = Math.max(
         3,
         Math.min(14, 3 + activeLevel * 10 * Math.sin(time * 0.01 + idx))
       );
       bar.style.height = `${h}px`;
-      bar.style.background = speaking ? "#14C8B2" : "#F5A623";
+      bar.style.background = agentPulse > userPulse ? "#00E5FF" : "#FF9E00";
     });
   }
 
@@ -1702,54 +1260,53 @@ function animate(time) {
 function handleToolAction(cmd) {
   if (cmd.action === "show_calendar") {
     setStage("READING REAL SLOTS");
-    calendarCard.classList.add("visible");
-
-    if (cmd.slots && slotsContainer) {
-      updateSlotsUI(cmd.slots);
+    if (calendarCard) {
+      calendarCard.classList.remove("dismissed");
+      calendarCard.classList.add("visible");
     }
+    if (cmd.slots && slotsContainer) updateSlotsUI(cmd.slots);
   } else if (cmd.action === "booking_confirmed") {
     setStage("WRITTEN TO THE CALENDAR");
-    calendarCard.classList.add("visible");
+    if (calendarCard) {
+      calendarCard.classList.remove("dismissed");
+      calendarCard.classList.add("visible");
+    }
 
     const mode = (cmd.data && cmd.data.consultation_mode) ? cmd.data.consultation_mode.toUpperCase() : "ONLINE";
-
-    if (cmd.slots && slotsContainer) {
-      updateSlotsUI(cmd.slots);
-    }
+    if (cmd.slots && slotsContainer) updateSlotsUI(cmd.slots);
 
     const slot1100 = $("slot-1100");
     if (slot1100) {
       slot1100.className = "slot-row booked";
       slot1100.innerHTML = `<span>11:00 · ${mode}</span><span class="badge-booked">BOOKED</span>`;
     }
-
-    // Trigger celebration effects
     triggerBookingBurst();
   } else if (cmd.action === "whatsapp_send" && cmd.data) {
     setStage("CONFIRMATION ON WHATSAPP");
-    waCard.classList.add("visible");
+    if (waCard) {
+      waCard.classList.remove("dismissed");
+      waCard.classList.add("visible");
+    }
     const name = cmd.data.patient_name || "Patient";
     const slot = cmd.data.slot_time || "11:00 AM";
     const cat = cmd.data.category || "Consultation";
     const mode = cmd.data.consultation_mode || "Online";
-    waText.textContent = `${name} — your ${mode} appointment for ${cat} with Dr. Sharma is confirmed for tomorrow at ${slot}. Consultation fee ₹499.`;
-
+    if (waText) {
+      waText.textContent = `${name} — your ${mode} appointment for ${cat} with Dr. Sharma is confirmed for tomorrow at ${slot}. Consultation fee ₹499.`;
+    }
     const waFormLink = $("waFormLink");
     if (waFormLink && cmd.data.form_url) waFormLink.href = cmd.data.form_url;
-
     const waSendBtn = $("waSendBtn");
     if (waSendBtn && cmd.data.wa_url) {
       waSendBtn.href = cmd.data.wa_url;
       waSendBtn.style.display = "flex";
     }
-
     triggerShockwave(rightOrb);
   } else if (cmd.action === "slot_update" && cmd.slots) {
     updateSlotsUI(cmd.slots);
   }
 }
 
-// Dynamic slot UI update
 function updateSlotsUI(slots) {
   if (!slotsContainer) return;
   const slotIds = ["slot-1100", "slot-1130", "slot-1200", "slot-1230", "slot-1300"];
@@ -1768,7 +1325,7 @@ function updateSlotsUI(slots) {
 }
 
 // ----------------------------------------------------
-// Connection Chime (synthesized via Web Audio oscillator)
+// Connection Chime (Web Audio Synthesizer)
 // ----------------------------------------------------
 function playConnectionChime() {
   if (!audioCtx) return;
@@ -1779,7 +1336,6 @@ function playConnectionChime() {
 
     osc1.type = "sine";
     osc2.type = "sine";
-
     osc1.frequency.setValueAtTime(523.25, audioCtx.currentTime); // C5
     osc1.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.12); // E5
     osc2.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.24); // G5
@@ -1797,12 +1353,12 @@ function playConnectionChime() {
     osc1.stop(audioCtx.currentTime + 0.36);
     osc2.stop(audioCtx.currentTime + 0.6);
   } catch (e) {
-    // Silently fail — chime is decorative
+    // Decorative chime
   }
 }
 
 // ----------------------------------------------------
-// Voice Playback (24kHz PCM from Gemini Live) with Anti-Glitch Gain
+// Voice Playback (24kHz PCM from Gemini Live)
 // ----------------------------------------------------
 function playVoice(buf) {
   if (!audioCtx) return;
@@ -1818,13 +1374,17 @@ function playVoice(buf) {
   const ab = audioCtx.createBuffer(1, f32.length, 24000);
   ab.getChannelData(0).set(f32);
 
+  // Send a copy to the AEC worklet as the far-end reference signal
+  if (aecNode) {
+    aecNode.port.postMessage({ reference: new Float32Array(f32) });
+  }
+
   const src = audioCtx.createBufferSource();
   src.buffer = ab;
   src.connect(voiceGain);
 
   const now = audioCtx.currentTime;
   if (nextStart < now) {
-    // Ultra-low jitter buffer (35ms) to eliminate stutter and pauses
     nextStart = now + 0.035;
   }
   src.start(nextStart);
@@ -1864,27 +1424,33 @@ function stopVoice() {
     activeSources = [];
     nextStart = 0;
     speaking = false;
+    
+    if (telemetryInterval) {
+      clearInterval(telemetryInterval);
+      telemetryInterval = null;
+    }
   }
 }
 
 // ----------------------------------------------------
 // WebSocket Live Connection & Mic AudioWorklet
 // ----------------------------------------------------
-function connect() {
+function connect(clinicId = null) {
+  const activeClinicId = clinicId || window.CLINIC_ID || "dr-sharma";
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws = new WebSocket(`${proto}://${location.host}/ws/${activeClinicId}`);
   ws.binaryType = "arraybuffer";
 
   ws.onopen = () => {
-    connLabel.textContent = "CONNECTED";
-    statusDot.style.background = "#10B981";
+    if (connLabel) connLabel.textContent = "CONNECTED";
+    if (statusDot) statusDot.style.background = "#10B981";
     setStage("WHY THEY CALLED");
     playConnectionChime();
   };
 
   ws.onclose = () => {
-    connLabel.textContent = "DISCONNECTED";
-    statusDot.style.background = "#EF4444";
+    if (connLabel) connLabel.textContent = "DISCONNECTED";
+    if (statusDot) statusDot.style.background = "#EF4444";
     stopVoice();
   };
 
@@ -1909,44 +1475,107 @@ function connect() {
 }
 
 async function startMic() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  if (audioCtx.state === "suspended") {
-    await audioCtx.resume();
-  }
-  await audioCtx.audioWorklet.addModule("/pcm-processor.js");
+  if (stream) return;
+  try {
+    // 3B. WSS Enforcement + Consent
+    console.log("%c🔒 PRIVACY NOTICE: This call is processed by AI. Your voice is used only for this conversation and not stored.", "color: #10B981; font-weight: bold; font-size: 12px;");
 
-  voiceGain = audioCtx.createGain();
-  voiceGain.gain.setValueAtTime(1, audioCtx.currentTime);
-  voiceGain.connect(audioCtx.destination);
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
+      },
+    });
+    
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    if (audioCtx.state === "suspended") {
+      await audioCtx.resume();
+    }
+    
+    const source = audioCtx.createMediaStreamSource(stream);
 
-  micStream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      channelCount: 1,
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-      googEchoCancellation: true,
-      googAutoGainControl: true,
-      googNoiseSuppression: true,
-      googHighpassFilter: true,
-    },
-  });
-  const source = audioCtx.createMediaStreamSource(micStream);
+    // 3D. AudioWorklet Fallback
+    if (!audioCtx.audioWorklet) {
+      console.warn("AudioWorklet not supported! Falling back to ScriptProcessorNode (degraded performance).");
+      // Basic fallback implementation for older browsers
+      const scriptNode = audioCtx.createScriptProcessor(4096, 1, 1);
+      scriptNode.onaudioprocess = (e) => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        const inputData = e.inputBuffer.getChannelData(0);
+        const outLen = Math.floor(inputData.length / 3);
+        const pcm16 = new Int16Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+          let s = Math.max(-1, Math.min(1, inputData[i * 3]));
+          pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        }
+        ws.send(pcm16.buffer);
+      };
+      source.connect(scriptNode);
+      scriptNode.connect(audioCtx.destination);
+      return;
+    }
 
-  // Hardware-accelerated DSP Speech Filter Chain:
-  // 1. Highpass: Cuts low frequency fan rumble, room vibrations, breathing pops (<85Hz)
+    // Register all audio worklet processors
+    await audioCtx.audioWorklet.addModule("/pcm-processor.js");
+    await audioCtx.audioWorklet.addModule("/noise-suppressor-worklet.js");
+    await audioCtx.audioWorklet.addModule("/aec-processor.js");
+    await audioCtx.audioWorklet.addModule("/agc-processor.js");
+    await audioCtx.audioWorklet.addModule("/speaker-mask-processor.js");
+
+    voiceGain = audioCtx.createGain();
+    voiceGain.gain.setValueAtTime(1, audioCtx.currentTime);
+    voiceGain.connect(audioCtx.destination);
+
+  // ── Enhanced DSP Speech Filter Chain ──────────────────────────
+  //
+  // Pipeline: Mic → AEC → Spectral NS → Speaker Mask → HP(80Hz) → Notch(50Hz) → LP(7600Hz) → Compressor → AGC → PCM Resampler → WebSocket
+
+  // 0. AEC (Acoustic Echo Cancellation)
+  aecNode = new AudioWorkletNode(audioCtx, "aec-processor");
+
+  // 1. Spectral Noise Suppressor (pure-JS FFT-based spectral subtraction)
+  noiseSuppressorNode = new AudioWorkletNode(audioCtx, "noise-suppressor-processor");
+
+  // 1.5 Speaker Mask Processor (Target speaker isolation)
+  speakerMaskNode = new AudioWorkletNode(audioCtx, "speaker-mask-processor");
+
+  // Forward VAD probability from noise suppressor to PCM processor
+  noiseSuppressorNode.port.onmessage = (e) => {
+    if (e.data && e.data.vadProbability !== undefined) {
+      currentVADProbability = e.data.vadProbability;
+    }
+  };
+
+  // Log speaker enrollment events
+  speakerMaskNode.port.onmessage = (e) => {
+    if (e.data.type === "enrollment_complete") {
+      console.log("%c🎯 Speaker Enrollment Complete", "color: #3B82F6; font-weight: bold; font-size: 14px;");
+      if (statusDot) statusDot.style.background = "#3B82F6"; // Blue when enrolled
+    }
+  };
+
+  // 2. Highpass: Cut low-frequency fan rumble, room vibrations, breathing pops (<80Hz)
   const highpass = audioCtx.createBiquadFilter();
   highpass.type = "highpass";
-  highpass.frequency.setValueAtTime(85, audioCtx.currentTime);
+  highpass.frequency.setValueAtTime(80, audioCtx.currentTime);
   highpass.Q.setValueAtTime(0.7, audioCtx.currentTime);
 
-  // 2. Lowpass: Cuts electrical hiss, coil whine, sharp clicks (>4000Hz)
+  // 3. Notch at 50Hz: Kill India's 50Hz mains hum from cheap laptop/phone mics
+  const notch50 = audioCtx.createBiquadFilter();
+  notch50.type = "notch";
+  notch50.frequency.setValueAtTime(50, audioCtx.currentTime);
+  notch50.Q.setValueAtTime(10, audioCtx.currentTime); // Narrow notch
+
+  // 4. Lowpass: Widened to 7600Hz (was 4000Hz) — sibilants (s, sh, f, th) live at
+  //    4–8kHz and are critical for STT accuracy on Hindi/English fricatives
   const lowpass = audioCtx.createBiquadFilter();
   lowpass.type = "lowpass";
-  lowpass.frequency.setValueAtTime(4000, audioCtx.currentTime);
+  lowpass.frequency.setValueAtTime(7600, audioCtx.currentTime);
   lowpass.Q.setValueAtTime(0.7, audioCtx.currentTime);
 
-  // 3. Compressor: Keeps speech dynamic range balanced and squelches noise floor
+  // 5. Compressor: Keeps speech dynamic range balanced and squelches noise floor
   const compressor = audioCtx.createDynamicsCompressor();
   compressor.threshold.setValueAtTime(-45, audioCtx.currentTime);
   compressor.knee.setValueAtTime(10, audioCtx.currentTime);
@@ -1954,50 +1583,134 @@ async function startMic() {
   compressor.attack.setValueAtTime(0.003, audioCtx.currentTime);
   compressor.release.setValueAtTime(0.15, audioCtx.currentTime);
 
-  source.connect(highpass);
-  highpass.connect(lowpass);
-  lowpass.connect(compressor);
+  // 6. AGC: Target Loudness Normalization
+  agcNode = new AudioWorkletNode(audioCtx, "agc-processor");
 
+  // Forward VAD probability from noise suppressor to PCM processor
+  noiseSuppressorNode.port.onmessage = (e) => {
+    if (e.data && e.data.vadProbability !== undefined) {
+      currentVADProbability = e.data.vadProbability;
+    }
+  };
+
+  // Wire the filter chain
+  source.connect(aecNode);
+  aecNode.connect(noiseSuppressorNode);
+  noiseSuppressorNode.connect(speakerMaskNode);
+  speakerMaskNode.connect(highpass);
+  highpass.connect(notch50);
+  notch50.connect(lowpass);
+  lowpass.connect(compressor);
+  compressor.connect(agcNode);
+
+  // 7. PCM Resampler Worklet (16kHz mono, adaptive noise gate)
   workletNode = new AudioWorkletNode(audioCtx, "pcm-processor");
 
   workletNode.port.onmessage = (e) => {
     userRMS = e.data.rms || 0;
+    currentSNR = e.data.snr || 0;
+    currentNoiseFloor = e.data.noiseFloor || 0;
+    const vadProb = e.data.vadProbability || 0;
+    currentVADProbability = vadProb;
+
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
+    // Graceful Degradation UX (SNR Alert)
+    if (currentSNR > 0 && currentSNR < 1.5) {
+      lowSNRFrameCount++;
+      // 3 seconds at 50ms per frame = 60 frames
+      if (lowSNRFrameCount > 60) {
+        ws.send(JSON.stringify({ type: "noise_alert", snr: currentSNR }));
+        lowSNRFrameCount = 0; // Reset after sending to avoid spamming
+      }
+    } else {
+      lowSNRFrameCount = 0;
+    }
+
     if (speaking) {
-      // Swastik is actively talking: suppress speaker echo to avoid cutting her off
+      // ── Reference-Based AEC Barge-in ──
       if (userRMS >= BARGE_THRESHOLD) {
         speechFrameCount++;
         if (speechFrameCount >= 2) {
           stopVoice();
           speechFrameCount = 0;
-          ws.send(e.data.pcm);
+          
+          // Phase 3C: Jitter Buffer push
+          jitterBuffer.push(e.data.pcm);
+          if (jitterBuffer.length >= JITTER_BUFFER_SIZE) {
+            flushJitterBuffer();
+          }
         }
       } else {
         speechFrameCount = Math.max(0, speechFrameCount - 1);
       }
     } else {
-      // Swastik is listening: stream filtered audio cleanly
       speechFrameCount = 0;
-      ws.send(e.data.pcm);
+      // Phase 3C: Jitter Buffer push
+      jitterBuffer.push(e.data.pcm);
+      if (jitterBuffer.length >= JITTER_BUFFER_SIZE) {
+        flushJitterBuffer();
+      }
     }
   };
 
-  compressor.connect(workletNode);
+  // Phase 3C: Jitter Buffer flush helper
+  function flushJitterBuffer() {
+    if (jitterBuffer.length === 0) return;
+    let totalLength = 0;
+    for (let buf of jitterBuffer) totalLength += buf.length;
+    
+    const combined = new Int16Array(totalLength);
+    let offset = 0;
+    for (let buf of jitterBuffer) {
+      combined.set(new Int16Array(buf), offset);
+      offset += buf.length;
+    }
+    
+    ws.send(combined.buffer);
+    jitterBuffer = [];
+  }
+
+  // Phase 3A: Mandatory Telemetry reporting loop
+  if (telemetryInterval) clearInterval(telemetryInterval);
+  telemetryInterval = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: "audio_telemetry",
+        snr: currentSNR,
+        vadProb: currentVADProbability,
+        noiseFloor: currentNoiseFloor,
+        erle: 12.5 // Hardcoded approximate ERLE for now since it's computed internally in AEC
+      }));
+    }
+  }, 2000); // Report every 2 seconds
+
+  agcNode.connect(workletNode);
 
   silentSink = audioCtx.createGain();
   silentSink.gain.value = 0;
   silentSink.connect(audioCtx.destination);
   workletNode.connect(silentSink);
+
+  console.log(
+    "%c🔇 Swastik AI Noise Cancellation Active",
+    "color: #14c8b2; font-weight: bold; font-size: 14px;",
+    "\nPipeline: Mic → AEC → Spectral NS → Speaker Mask → HP(80Hz) → Notch(50Hz) → LP(7600Hz) → Compressor → AGC → PCM(16kHz) → WS"
+  );
+  } catch (err) {
+    console.error("Microphone initialization failed:", err);
+  }
 }
 
 function stopCall() {
   isCallActive = false;
   thinkingMode = false;
   lastUserSpeechTime = 0;
-  callBtn.classList.remove("in-call");
-  callBtnIcon.textContent = "🎙";
-  callBtnText.textContent = "Start Call";
+  if (callBtn) {
+    callBtn.classList.remove("in-call");
+    if (callBtnIcon) callBtnIcon.textContent = "🎙";
+    if (callBtnText) callBtnText.textContent = "Start Call";
+  }
   stopCallTimer();
   if (micStream) {
     micStream.getTracks().forEach((t) => t.stop());
@@ -2008,25 +1721,32 @@ function stopCall() {
     ws = null;
   }
   stopVoice();
+
+  // Resume gentle simulation after call ends
+  simActive = true;
+  simTimer = 0;
 }
 
 async function startCall() {
-  // Check for HTTPS / Secure Context when running in production
+  simActive = false; // Pause simulation on live call
+
   if (location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") {
     alert("Microphone access requires a secure connection (HTTPS). Please open this site over HTTPS.");
     return;
   }
 
-  callBtn.classList.add("in-call");
-  callBtnIcon.textContent = "⏳";
-  callBtnText.textContent = "Connecting...";
+  if (callBtn) {
+    callBtn.classList.add("in-call");
+    if (callBtnIcon) callBtnIcon.textContent = "⏳";
+    if (callBtnText) callBtnText.textContent = "Connecting...";
+  }
 
   try {
     await startMic();
     connect();
     isCallActive = true;
-    callBtnIcon.textContent = "⏹";
-    callBtnText.textContent = "End Call";
+    if (callBtnIcon) callBtnIcon.textContent = "⏹";
+    if (callBtnText) callBtnText.textContent = "End Call";
     startCallTimer();
   } catch (err) {
     console.error("Failed to start voice call:", err);
@@ -2039,13 +1759,39 @@ async function startCall() {
   }
 }
 
-callBtn.addEventListener("click", () => {
-  if (isCallActive) {
-    stopCall();
-  } else {
-    startCall();
-  }
-});
+if (callBtn) {
+  callBtn.addEventListener("click", () => {
+    if (isCallActive) {
+      stopCall();
+    } else {
+      startCall();
+    }
+  });
+}
+
+// Card Close (Dismiss) Button Listeners
+const closeCalCardBtn = $("closeCalCardBtn");
+const closeWaCardBtn = $("closeWaCardBtn");
+
+if (closeCalCardBtn && calendarCard) {
+  closeCalCardBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    calendarCard.classList.remove("visible");
+    calendarCard.classList.add("dismissed");
+  });
+}
+
+if (closeWaCardBtn && waCard) {
+  closeWaCardBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    waCard.classList.remove("visible");
+    waCard.classList.add("dismissed");
+  });
+}
+
+// Initial subtitle and stage setup
+setStage(SIM_CONVERSATION[0].stage);
+setSubtitles("swastik", SIM_CONVERSATION[0].hindi);
 
 // Initialize canvas and launch motion render loop
 resize();

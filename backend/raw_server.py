@@ -4,50 +4,64 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, UploadFile, File
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Response, RedirectResponse
+from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from backend.persona import SWASTIK_INSTRUCTION
+from backend.prompt_builder import build_system_instructions
+from backend.tenant_resolver import ClinicNotFoundError, bust_cache, resolve_clinic
 from backend.tools import (
     TOOL_DECLARATIONS,
-    dispatch_tool,
-    get_all_appointments,
+    _session_cache,
+    authenticate_user,
+    check_red_flags,
     create_order,
-    verify_order_payment,
-    get_order_by_id,
-    save_call_log,
-    get_all_call_logs,
-    update_appointment_status,
-    get_all_orders,
-    get_admin_stats,
+    create_session,
+    create_user,
+    delete_session,
+    dispatch_tool,
+    dispatch_webhook,
     export_appointments_csv,
     export_call_logs_csv,
-    get_setting,
-    set_setting,
-    dispatch_webhook,
     extract_clinical_summary,
+    get_admin_stats,
+    get_all_appointments,
+    get_all_call_logs,
+    get_all_orders,
+    get_order_by_id,
     get_red_flag_phrases,
-    set_red_flag_phrases,
-    check_red_flags,
-    create_user,
-    authenticate_user,
-    create_session,
+    get_setting,
     get_user_by_session_token,
-    delete_session,
-    reschedule_appointment,
-    cancel_appointment,
+    hash_password,
+    save_call_log,
+    set_red_flag_phrases,
+    set_setting,
+    update_appointment_status,
+    verify_order_payment,
 )
+from backend.usage_meter import get_monthly_usage, record_call_usage
+from backend.call_monitor import monitor
 
 # Structured logging with timestamps
 logging.basicConfig(
@@ -93,13 +107,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from backend.reminder_service import reminder_daemon
+
+
+@app.on_event("startup")
+async def startup_event():
+    log.info("Starting background reminder daemon...")
+    import asyncio
+    asyncio.create_task(reminder_daemon())
+
+# ── Rate Limiter ──────────────────────────────────────────────
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 FRONTEND = PROJECT_ROOT / "frontend"
 FRONTEND_DIST = PROJECT_ROOT / "frontend-app" / "dist"
 ASSETS = PROJECT_ROOT / "assets"
-STARTUP_TIME = datetime.now(timezone.utc)
+STARTUP_TIME = datetime.now(UTC)
 
+from backend.number_provisioning import router as provisioning_router
+from backend.superadmin import router as superadmin_router
+from backend.twilio_bridge import router as twilio_router
 
+app.include_router(twilio_router)
+app.include_router(provisioning_router)
+app.include_router(superadmin_router)
 # ── Health & Status ──────────────────────────────────────────
 @app.get("/health")
 async def health():
@@ -108,16 +142,11 @@ async def health():
         "status": "healthy",
         "service": "swastik-voice-agent",
         "version": "1.0.0",
-        "uptime_seconds": (datetime.now(timezone.utc) - STARTUP_TIME).total_seconds(),
+        "uptime_seconds": (datetime.now(UTC) - STARTUP_TIME).total_seconds(),
         "model": MODEL,
         "voice": VOICE,
     }
 
-
-@app.get("/api/appointments")
-async def api_appointments(limit: int = 100):
-    """Retrieve appointments stored in SQLite database."""
-    return {"appointments": get_all_appointments(limit=limit)}
 
 
 # ── Authentication APIs ──────────────────────────────────────
@@ -135,7 +164,8 @@ class SignInRequest(BaseModel):
 
 
 @app.post("/api/auth/signup")
-async def api_signup(req: SignUpRequest):
+@limiter.limit("3/minute")
+async def api_signup(request: Request, req: SignUpRequest):
     """Register a new user and return session token."""
     try:
         user = create_user(
@@ -147,22 +177,41 @@ async def api_signup(req: SignUpRequest):
             phone=req.phone,
         )
         token = create_session(user["id"])
+        
+        # Send OTP if phone is provided
+        if req.phone and user.get("otp_code"):
+            from backend.tools import send_sms, send_welcome_email
+            msg = f"Your Swastik verification code is {user['otp_code']}"
+            # For demo purposes, we will fire and forget
+            send_sms(req.phone, msg)
+            
+        # Fire and forget welcome email
+        try:
+            from backend.tools import send_welcome_email
+            # Run in a background thread or executor to not block the response
+            import asyncio
+            asyncio.get_event_loop().run_in_executor(None, send_welcome_email, req.email, req.clinic_name)
+        except Exception as e:
+            log.warning("Could not dispatch welcome email: %s", e)
+
         return {
             "success": True,
             "message": "Account created successfully",
             "token": token,
             "user": user,
+            "requires_verification": True
         }
     except ValueError as e:
         return JSONResponse({"success": False, "detail": str(e)}, status_code=400)
-    except Exception as e:
+    except Exception:
         log.exception("Signup error")
         return JSONResponse({"success": False, "detail": "Failed to create account"}, status_code=500)
 
 
 @app.post("/api/auth/signin")
 @app.post("/api/auth/login")
-async def api_signin(req: SignInRequest):
+@limiter.limit("5/minute")
+async def api_signin(request: Request, req: SignInRequest):
     """Authenticate user credentials and return session token."""
     try:
         user = authenticate_user(email=req.email, password=req.password)
@@ -175,28 +224,18 @@ async def api_signin(req: SignInRequest):
             "token": token,
             "user": user,
         }
-    except Exception as e:
+    except Exception:
         log.exception("Signin error")
         return JSONResponse({"success": False, "detail": "Sign in failed"}, status_code=500)
 
 
+
 @app.get("/api/auth/me")
 async def api_auth_me(request: Request):
-    """Get current logged-in user profile from Bearer token."""
-    auth_header = request.headers.get("Authorization", "")
-    token = ""
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:].strip()
-    elif "token" in request.query_params:
-        token = request.query_params["token"]
-
-    if not token:
-        return JSONResponse({"authenticated": False, "detail": "Not authenticated"}, status_code=401)
-
-    user = get_user_by_session_token(token)
+    """Return currently authenticated user."""
+    user = await _get_authenticated_user(request)
     if not user:
-        return JSONResponse({"authenticated": False, "detail": "Session expired or invalid"}, status_code=401)
-
+        return JSONResponse({"authenticated": False}, status_code=401)
     return {"authenticated": True, "user": user}
 
 
@@ -214,6 +253,207 @@ async def api_signout(request: Request):
     if token:
         delete_session(token)
     return {"success": True, "message": "Signed out successfully"}
+
+@app.post("/api/auth/signout-all")
+async def api_signout_all(request: Request):
+    """Invalidate all session tokens for the authenticated user."""
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Not authenticated"}, status_code=401)
+        
+    from backend.database import get_db
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM user_sessions WHERE user_id = ?", (user["id"],))
+        conn.commit()
+        
+    # Clear session cache
+    from backend.tools import _session_cache
+    _session_cache.clear()
+        
+    return {"success": True, "message": "Signed out of all devices successfully"}
+
+
+# ── Account Verification ─────────────────────────────────────
+class VerifyOTPRequest(BaseModel):
+    otp_code: str
+
+@app.post("/api/auth/verify-otp")
+async def api_verify_otp(request: Request, req: VerifyOTPRequest):
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"success": False, "detail": "Not authenticated"}, status_code=401)
+        
+    from backend.database import get_db
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT otp_code FROM users WHERE id = ?", (user["id"],))
+        row = cursor.fetchone()
+        
+        if not row:
+            return JSONResponse({"success": False, "detail": "User not found"}, status_code=404)
+            
+        stored_otp = row[0]
+        if stored_otp and stored_otp == req.otp_code.strip():
+            cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user["id"],))
+            conn.commit()
+            
+            # Clear cache to force next reload to get is_verified = 1
+            from backend.tools import _session_cache
+            _session_cache.clear()
+            
+            return {"success": True, "message": "Account verified successfully"}
+        else:
+            return JSONResponse({"success": False, "detail": "Invalid OTP"}, status_code=400)
+
+
+# ── Password Reset ───────────────────────────────────────────
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+@app.post("/api/auth/forgot-password")
+@limiter.limit("3/minute")
+async def api_forgot_password(request: Request, req: ForgotPasswordRequest):
+    """Request a password reset token. In production, this sends an email/WhatsApp with the reset link."""
+    import secrets as _secrets
+
+    from backend.database import get_db
+    email = req.email.strip().lower()
+    
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE email = ?", (email,))
+        user_row = cursor.fetchone()
+        if not user_row:
+            # Don't reveal whether the email exists (timing-safe)
+            return {"success": True, "message": "If an account with that email exists, a reset link has been sent."}
+        
+        user_id = user_row[0]
+        reset_token = _secrets.token_urlsafe(32)
+        expires_at = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+        
+        # Store reset token in user_sessions with a special prefix
+        cursor.execute(
+            "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+            (f"reset:{reset_token}", user_id, expires_at)
+        )
+        conn.commit()
+    
+    # TODO: Send reset_token via email or WhatsApp in production
+    # For now, return it in the response for development/testing
+    log.info("Password reset requested for %s (token: %s...)", email, reset_token[:8])
+    return {
+        "success": True,
+        "message": "If an account with that email exists, a reset link has been sent.",
+        "reset_token": reset_token,  # Remove in production — send via email/WhatsApp instead
+    }
+
+
+@app.post("/api/auth/reset-password")
+@limiter.limit("5/minute")
+async def api_reset_password(request: Request, req: ResetPasswordRequest):
+    """Reset password using a valid reset token."""
+    from backend.database import get_db
+    
+    if not req.new_password or len(req.new_password) < 6:
+        return JSONResponse({"success": False, "detail": "Password must be at least 6 characters"}, status_code=400)
+    
+    prefixed_token = f"reset:{req.token}"
+    
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT user_id, expires_at FROM user_sessions WHERE token = ?",
+            (prefixed_token,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return JSONResponse({"success": False, "detail": "Invalid or expired reset token"}, status_code=400)
+        
+        try:
+            expires_at = datetime.fromisoformat(row["expires_at"])
+            if datetime.now(UTC) > expires_at:
+                cursor.execute("DELETE FROM user_sessions WHERE token = ?", (prefixed_token,))
+                conn.commit()
+                return JSONResponse({"success": False, "detail": "Reset token has expired"}, status_code=400)
+        except Exception:
+            return JSONResponse({"success": False, "detail": "Invalid token format"}, status_code=400)
+        
+        user_id = row["user_id"]
+        pw_hash, salt = hash_password(req.new_password)
+        
+        cursor.execute("UPDATE users SET password_hash = ?, salt = ? WHERE id = ?", (pw_hash, salt, user_id))
+        # Delete the used reset token
+        cursor.execute("DELETE FROM user_sessions WHERE token = ?", (prefixed_token,))
+        # Invalidate all existing sessions for security
+        cursor.execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
+        conn.commit()
+    
+    # Clear session cache entries for this user
+    _session_cache.clear()
+    
+    log.info("Password reset completed for user_id=%s", user_id)
+    return {"success": True, "message": "Password has been reset. Please sign in with your new password."}
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
+@app.post("/api/auth/google")
+@limiter.limit("5/minute")
+async def api_auth_google(request: Request, req: GoogleAuthRequest):
+    """Google OAuth sign-in / sign-up."""
+    try:
+        token = req.credential
+        client_id = os.environ.get("GOOGLE_CLIENT_ID")
+        
+        if client_id:
+            from google.oauth2 import id_token
+            from google.auth.transport import requests as google_requests
+            idinfo = id_token.verify_oauth2_token(token, google_requests.Request(), client_id)
+        else:
+            # Fallback for local testing without a Client ID
+            from google.auth.jwt import decode
+            idinfo = decode(token, verify=False)
+            
+        email = idinfo['email']
+        name = idinfo.get('name', 'Doctor')
+        
+        from backend.database import get_db
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, is_verified FROM users WHERE email = ?", (email,))
+            row = cursor.fetchone()
+            
+            if row:
+                user_id = row[0]
+                if row[1] == 0:
+                    cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_id,))
+                conn.commit()
+            else:
+                user = create_user(
+                    name=name,
+                    email=email,
+                    password="google_oauth_dummy",
+                    role="doctor",
+                    clinic_name=f"Dr. {name.split()[0]}'s Clinic",
+                    phone=""
+                )
+                user_id = user["id"]
+                # Auto verify google users
+                cursor.execute("UPDATE users SET is_verified = 1 WHERE id = ?", (user_id,))
+                conn.commit()
+            
+        session_token = create_session(user_id)
+        log.info("Google Auth successful for user_id=%s", user_id)
+        return {"success": True, "token": session_token}
+    except Exception as e:
+        log.error("Google Auth failed: %s", e)
+        return JSONResponse({"success": False, "detail": str(e)}, status_code=400)
 
 
 # ── Checkout & Subscription APIs ────────────────────────────
@@ -261,6 +501,33 @@ async def api_verify_payment(req: VerifyPaymentRequest):
         return JSONResponse({"status": "error", "message": "Order not found"}, status_code=404)
     return {"status": "success", "order": updated}
 
+@app.get("/api/checkout/order/{order_id}/invoice")
+async def api_download_invoice(order_id: str):
+    """Download a PDF invoice for a paid subscription order."""
+    from backend.database import get_db
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM orders WHERE order_id = ?", (order_id,))
+        row = cursor.fetchone()
+        
+    if not row:
+        return JSONResponse({"status": "error", "message": "Order not found"}, status_code=404)
+        
+    order = dict(row)
+    if order.get("status") != "PAID":
+        return JSONResponse({"status": "error", "message": "Invoice not available for unpaid orders"}, status_code=400)
+        
+    from backend.tools import generate_invoice_pdf
+    pdf_bytes = generate_invoice_pdf(order)
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=\"invoice-{order_id}.pdf\""
+        }
+    )
+
 
 @app.get("/api/checkout/order/{order_id}")
 async def api_get_order(order_id: str):
@@ -273,15 +540,25 @@ async def api_get_order(order_id: str):
 
 # ── Doctor & Clinic Admin APIs ──────────────────────────────
 @app.get("/api/admin/stats")
-async def api_admin_stats():
+async def api_admin_stats(request: Request):
     """Clinic dashboard overview statistics."""
-    return get_admin_stats()
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    clinic_id = user.get("clinic_id")
+    return get_admin_stats(clinic_id=clinic_id)
 
 
 @app.get("/api/admin/appointments")
-async def api_admin_appointments(status: str = None, search: str = None, limit: int = 100):
+async def api_admin_appointments(request: Request, status: str = None, search: str = None, limit: int = 100):
     """Retrieve appointments with optional status filtering and search."""
-    appts = get_all_appointments(limit=limit)
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    clinic_id = user.get("clinic_id")
+    appts = get_all_appointments(limit=limit, clinic_id=clinic_id)
     if status and status.upper() != "ALL":
         appts = [a for a in appts if a.get("status", "").upper() == status.upper()]
     if search:
@@ -309,15 +586,58 @@ async def api_update_status(appointment_id: int, req: UpdateStatusRequest):
 
 
 @app.get("/api/admin/call-logs")
-async def api_admin_call_logs(limit: int = 50):
+async def api_admin_call_logs(request: Request, limit: int = 50):
     """Retrieve recent voice calls with full dialog transcripts."""
-    return {"call_logs": get_all_call_logs(limit=limit)}
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    clinic_id = user.get("clinic_id")
+    is_owner = user.get("role") in ("owner", "superadmin", "doctor")
+    
+    return {"call_logs": get_all_call_logs(limit=limit, clinic_id=clinic_id, mask_phone=not is_owner)}
 
 
 @app.get("/api/admin/orders")
-async def api_admin_orders(limit: int = 100):
+async def api_admin_orders(request: Request, limit: int = 100):
     """Retrieve clinic subscription orders."""
-    return {"orders": get_all_orders(limit=limit)}
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+    clinic_id = user.get("clinic_id")
+    return {"orders": get_all_orders(limit=limit, clinic_id=clinic_id)}
+
+
+@app.get("/api/admin/active-calls")
+async def api_active_calls(request: Request):
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    
+    clinic_id = user.get("clinic_id")
+    calls = []
+    for sid, data in monitor.active_calls.items():
+        if data["clinic_id"] == clinic_id or user.get("role") in ("owner", "superadmin"):
+            calls.append({"session_id": sid, "caller": data["caller"], "channel_type": data["channel_type"], "status": data["status"]})
+    return {"active_calls": calls}
+
+
+@app.websocket("/ws/admin/monitor/{session_id}")
+async def ws_monitor(websocket: WebSocket, session_id: str):
+    await websocket.accept()
+    if monitor.subscribe(session_id, websocket):
+        try:
+            while True:
+                msg = await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
+        except Exception:
+            pass
+        finally:
+            monitor.unsubscribe(session_id, websocket)
+    else:
+        await websocket.close(code=1008, reason="Call not found")
 
 
 class SendWhatsAppRequest(BaseModel):
@@ -382,6 +702,44 @@ async def api_export_call_logs():
     )
 
 
+# ── Outbound Calling ──────────────────────────────────────────
+class OutboundCallRequest(BaseModel):
+    to_phone: str
+    clinic_id: str = "dr-sharma"
+    prompt: str = ""
+
+@app.post("/api/admin/outbound-call")
+async def api_outbound_call(req: OutboundCallRequest):
+    """Trigger an outbound call via Twilio REST API."""
+    import os
+    from twilio.rest import Client
+    
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    from_phone = os.environ.get("TWILIO_PHONE_NUMBER")
+    
+    if not all([account_sid, auth_token, from_phone]):
+        return JSONResponse({"status": "error", "message": "Twilio credentials not fully configured."}, status_code=500)
+        
+    try:
+        client = Client(account_sid, auth_token)
+        # Use our public URL for webhook
+        public_url = get_setting("public_url", "https://swastik.ai")
+        if "localhost" in public_url:
+            return JSONResponse({"status": "error", "message": "Cannot make outbound calls with localhost public URL. Please configure Ngrok URL in settings."}, status_code=400)
+            
+        call = client.calls.create(
+            to=req.to_phone,
+            from_=from_phone,
+            url=f"{public_url}/api/voice/incoming?clinic_id={req.clinic_id}",
+            method="POST"
+        )
+        return {"status": "success", "call_sid": call.sid}
+    except Exception as e:
+        log.error(f"Failed to initiate outbound call: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+
 # ── Webhook & Automation Settings ───────────────────────────
 class WebhookSettingsRequest(BaseModel):
     webhook_url: str
@@ -409,7 +767,7 @@ async def api_test_webhook():
 
     test_payload = {
         "event": "test.ping",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "source": "Swastik AI Voice Receptionist",
         "clinic": "Dr. Sharma's Clinic",
         "data": {
@@ -440,8 +798,45 @@ async def api_test_webhook():
         return JSONResponse({
             "status": "error",
             "response_time_ms": elapsed_ms,
-            "message": f"Webhook failed: {str(e)}",
+            "message": f"Webhook failed: {e!s}",
         }, status_code=502)
+
+
+# ── Clinic Profile & Channels ───────────────────────────────
+# ── Old mock clinic profile route removed ──
+
+@app.get("/api/admin/channels")
+async def api_get_channels(request: Request):
+    from backend.database import get_db
+    session_token = request.cookies.get("session_token")
+    user = get_user_by_session_token(session_token) if session_token else None
+    clinic_id = user["clinic_id"] if user else "dr-sharma"
+    
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT channel_type, identifier, is_active
+                FROM clinic_channels
+                WHERE clinic_id = ?
+            """, (clinic_id,))
+            rows = cursor.fetchall()
+            
+            channels = {
+                "smart_link_url": f"/voice/{clinic_id}", # fallback
+                "widget_embed_code": f"<script src=\"https://voice.swastik.ai/widget.js\" data-clinic-id=\"{clinic_id}\"></script>"
+            }
+            
+            for row in rows:
+                if row["channel_type"] == "smart_link":
+                    channels["smart_link_url"] = f"/voice/{row['identifier']}"
+                elif row["channel_type"] == "widget":
+                    channels["widget_embed_code"] = f"<script src=\"https://voice.swastik.ai/widget.js\" data-clinic-id=\"{row['identifier']}\"></script>"
+            
+            return channels
+    except Exception as e:
+        log.error("Failed to fetch channels: %s", e)
+        return JSONResponse({"error": "Failed to load channels"}, status_code=500)
 
 
 # ── Doctor-Configurable Red-Flag Phrases ───────────────────
@@ -493,7 +888,24 @@ async def api_get_audio_memo(session_id: str):
     import math
     import struct
     import wave
+    from pathlib import Path
 
+    memos_dir = Path(__file__).resolve().parent / "memos"
+    memo_path = memos_dir / f"{session_id}.wav"
+    
+    if memo_path.exists():
+        with open(memo_path, "rb") as f:
+            content = f.read()
+        return Response(
+            content=content,
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": f"inline; filename=intake_memo_{session_id}.wav",
+                "Cache-Control": "public, max-age=3600",
+            }
+        )
+
+    # Fallback: Synthetic chime if recording not found
     buf = io.BytesIO()
     with wave.open(buf, 'wb') as wav_file:
         wav_file.setnchannels(1)       # Mono
@@ -567,6 +979,240 @@ async def not_found_handler(request: Request, exc):
     )
 
 
+@app.get("/api/clinics/{clinic_id}")
+def get_clinic_info_api(clinic_id: str):
+    from backend.database import get_db
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT c.name, c.theme_color, c.slug,
+                       p.doctor_name, p.greeting, p.services, p.consultation_fee
+                FROM clinics c
+                LEFT JOIN clinic_profile p ON p.clinic_id = c.id
+                WHERE c.id = ?
+            """, (clinic_id,))
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "id": clinic_id,
+                    "name": row[0],
+                    "themeColor": row[1],
+                    "slug": row[2],
+                    "doctorName": row[3],
+                    "greeting": row[4],
+                    "fee": row[6] or "₹499",
+                }
+            else:
+                return JSONResponse({"error": "Clinic not found"}, status_code=404)
+    except Exception:
+        return JSONResponse({"error": "Database error"}, status_code=500)
+
+
+@app.get("/api/voice/{slug}")
+def get_clinic_by_slug(slug: str):
+    """Resolve a clinic by its smart-link slug for the landing page."""
+    from backend.database import get_db
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT c.id, c.name, c.theme_color, c.slug,
+                       p.doctor_name, p.greeting, p.services, p.consultation_fee, p.address
+                FROM clinics c
+                LEFT JOIN clinic_profile p ON p.clinic_id = c.id
+                WHERE c.slug = ? AND c.status = 'active'
+            """, (slug,))
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "name": row[1],
+                    "themeColor": row[2],
+                    "slug": row[3],
+                    "doctorName": row[4],
+                    "greeting": row[5],
+                    "services": row[6],
+                    "fee": row[7] or "₹499",
+                    "address": row[8],
+                }
+            else:
+                return JSONResponse({"error": "Clinic not found"}, status_code=404)
+    except Exception:
+        return JSONResponse({"error": "Database error"}, status_code=500)
+
+
+# ── Clinic Profile Admin APIs ────────────────────────────────
+class ClinicProfileUpdate(BaseModel):
+    greeting: str = None
+    services: str = None
+    working_hours: str = None
+    address: str = None
+    booking_rules: str = None
+    escalation_number: str = None
+    custom_instructions: str = None
+    doctor_name: str = None
+    consultation_fee: str = None
+
+
+@app.get("/api/admin/clinic-profile")
+async def api_get_clinic_profile(request: Request):
+    """Get the full editable profile for the authenticated clinic."""
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    clinic_id = user.get("clinic_id")
+    if not clinic_id:
+        return JSONResponse({"error": "No clinic associated"}, status_code=404)
+
+    from backend.database import get_db
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT c.id, c.name, c.slug, c.theme_color, c.timezone, c.languages,
+                   c.voice_persona, c.plan_id,
+                   p.greeting, p.services, p.working_hours, p.address,
+                   p.booking_rules, p.escalation_number, p.custom_instructions,
+                   p.doctor_name, p.consultation_fee
+            FROM clinics c
+            LEFT JOIN clinic_profile p ON p.clinic_id = c.id
+            WHERE c.id = ?
+        """, (clinic_id,))
+        row = cursor.fetchone()
+        if not row:
+            return JSONResponse({"error": "Clinic not found"}, status_code=404)
+        return {"profile": dict(row.items()) if hasattr(row, 'items') else dict(row)}
+
+
+@app.put("/api/admin/clinic-profile")
+async def api_update_clinic_profile(request: Request, body: ClinicProfileUpdate):
+    """Update clinic profile fields. Busts tenant cache."""
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    clinic_id = user.get("clinic_id")
+    if not clinic_id:
+        return JSONResponse({"error": "No clinic associated"}, status_code=404)
+
+    from backend.database import get_db
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        return {"status": "no changes"}
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [clinic_id]
+
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE clinic_profile SET {set_clause} WHERE clinic_id = ?",
+            tuple(values)
+        )
+        conn.commit()
+
+    bust_cache(clinic_id)
+    return {"status": "updated", "fields": list(updates.keys())}
+
+
+@app.get("/api/admin/channels")
+async def api_get_channels(request: Request):
+    """Get all channels for the authenticated clinic."""
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    clinic_id = user.get("clinic_id")
+    if not clinic_id:
+        return JSONResponse({"error": "No clinic associated"}, status_code=404)
+
+    from backend.database import get_db
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, channel_type, identifier, is_active, provider
+            FROM clinic_channels WHERE clinic_id = ?
+        """, (clinic_id,))
+        rows = cursor.fetchall()
+
+        # Also get the slug for smart link URL
+        cursor.execute("SELECT slug FROM clinics WHERE id = ?", (clinic_id,))
+        slug_row = cursor.fetchone()
+        slug = slug_row[0] if slug_row else clinic_id
+
+    channels = [dict(r.items()) if hasattr(r, 'items') else dict(r) for r in rows]
+    return {
+        "channels": channels,
+        "slug": slug,
+        "clinic_id": clinic_id,
+        "widget_embed_code": f'<script src="https://cdn.swastik.ai/widget.js" data-clinic-id="{clinic_id}"></script>',
+        "smart_link_url": f"/voice/{slug}",
+    }
+
+
+@app.post("/api/admin/channels/{channel_id}/toggle")
+async def api_toggle_channel(request: Request, channel_id: int):
+    """Enable or disable a channel."""
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    clinic_id = user.get("clinic_id")
+    if not clinic_id:
+        return JSONResponse({"error": "No clinic associated"}, status_code=404)
+
+    from backend.database import get_db
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE clinic_channels SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END
+            WHERE id = ? AND clinic_id = ?
+        """, (channel_id, clinic_id))
+        conn.commit()
+
+    bust_cache(clinic_id)
+    return {"status": "toggled"}
+
+
+@app.get("/api/admin/usage")
+async def api_get_usage(request: Request):
+    """Get current month's usage for the authenticated clinic."""
+    user = await _get_authenticated_user(request)
+    if not user:
+        return JSONResponse({"error": "Not authenticated"}, status_code=401)
+    clinic_id = user.get("clinic_id")
+    if not clinic_id:
+        return JSONResponse({"error": "No clinic associated"}, status_code=404)
+
+    usage = get_monthly_usage(clinic_id)
+    return {"usage": usage}
+
+
+async def _get_authenticated_user(request: Request) -> dict | None:
+    """Extract authenticated user from Bearer token, including clinic_id."""
+    auth_header = request.headers.get("Authorization", "")
+    token = ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+    elif "token" in request.query_params:
+        token = request.query_params["token"]
+    if not token:
+        return None
+
+    user = get_user_by_session_token(token)
+    if not user:
+        return None
+
+    # Attach clinic_id
+    from backend.database import get_db
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id FROM clinics WHERE owner_user_id = ?", (user["id"],))
+            clinic_row = cursor.fetchone()
+            if clinic_row:
+                user = dict(user)
+                user["clinic_id"] = clinic_row[0]
+    except Exception:
+        pass
+    return user
+
 @app.exception_handler(500)
 async def server_error_handler(request: Request, exc):
     """Custom 500 page."""
@@ -574,37 +1220,114 @@ async def server_error_handler(request: Request, exc):
     return JSONResponse({"error": "Internal server error"}, status_code=500)
 
 
-@app.websocket("/ws")
-async def ws(websocket: WebSocket):
+@app.websocket("/ws/link/{slug}")
+async def ws_smart_link(websocket: WebSocket, slug: str):
+    """Smart-link WebSocket: resolve clinic by slug."""
     await websocket.accept()
-    log.info("ws connected; opening Live session (model=%s, voice=%s)", MODEL, VOICE)
+    try:
+        clinic = await resolve_clinic("smart_link", slug)
+    except ClinicNotFoundError:
+        log.warning("Smart link ws for unknown slug %s, closing", slug)
+        await websocket.close(code=1008, reason="Unknown clinic")
+        return
+    await _run_voice_session(websocket, clinic, channel_type="smart_link")
 
-    import uuid
+
+@app.websocket("/ws/{clinic_id}")
+async def ws(websocket: WebSocket, clinic_id: str):
+    """Widget WebSocket: resolve clinic by ID (primary entry point)."""
+    await websocket.accept()
+    try:
+        clinic = await resolve_clinic("widget", clinic_id)
+    except ClinicNotFoundError:
+        log.warning("ws connected for unknown clinic_id %s, closing", clinic_id)
+        await websocket.close(code=1008, reason="Unknown clinic")
+        return
+    await _run_voice_session(websocket, clinic, channel_type="widget")
+
+
+async def _run_voice_session(websocket: WebSocket, clinic: dict, channel_type: str = "widget"):
+    """Shared voice session handler used by all entry points."""
+    clinic_id = clinic.get("id", "unknown")
+    
+    from backend.usage_meter import check_plan_limit
+    if not check_plan_limit(clinic_id):
+        log.warning("Clinic %s has exceeded usage limit. Closing WS.", clinic_id)
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error", 
+                "message": "Usage limit exceeded. Please contact support."
+            }))
+            await websocket.close(code=1008, reason="Usage limit exceeded")
+        except:
+            pass
+        return
+
+    clinic_name = clinic.get("name", "Unknown Clinic")
+    log.info("Opening Live session for %s (clinic=%s, channel=%s, model=%s, voice=%s)",
+             clinic_name, clinic_id, channel_type, MODEL, VOICE)
+
+    # Build system instruction from structured profile (or fallback to raw prompt)
+    system_prompt = build_system_instructions(clinic)
+
+    live_config = {
+        "response_modalities": ["AUDIO"],
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "input_audio_transcription": {},
+        "output_audio_transcription": {},
+        "speech_config": {"voice_config": {"prebuilt_voice_config": {"voice_name": VOICE}}},
+        "tools": [{"function_declarations": TOOL_DECLARATIONS}],
+    }
+
     import time
+    import uuid
     session_id = f"SES-{uuid.uuid4().hex[:8].upper()}"
     start_time = time.time()
     caller_info = {"name": "Anonymous Caller", "phone": ""}
     session_turns = []
+    audio_chunks = bytearray()
+    monitor.start_call(session_id, clinic_id, caller_info["name"], channel_type)
+    
+    telemetry_stats = {"snr_sum": 0.0, "erle_sum": 0.0, "count": 0}
 
     try:
-        async with client.aio.live.connect(model=MODEL, config=LIVE_CONFIG) as session:
+        async with client.aio.live.connect(model=MODEL, config=live_config) as session:
             log.info("Live session open for Swastik AI (session_id=%s)", session_id)
 
             async def upstream():
                 while True:
                     try:
                         msg = await asyncio.wait_for(websocket.receive(), timeout=300.0)
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         log.warning("upstream: no input for 5 minutes, closing session due to inactivity")
                         return
                         
                     if msg.get("type") == "websocket.disconnect":
                         log.info("upstream: browser disconnected")
                         return
+                    
+                    text_data = msg.get("text")
+                    if text_data:
+                        try:
+                            data = json.loads(text_data)
+                            if data.get("type") == "noise_alert":
+                                log.warning(f"upstream: noise alert received, snr={data.get('snr')}")
+                                await session.send(
+                                    input="SYSTEM (Not the user): The caller's environment is very noisy. Politely ask them to move somewhere quieter or speak closer to the microphone. Keep it brief.",
+                                    end_of_turn=True
+                                )
+                            elif data.get("type") == "audio_telemetry":
+                                telemetry_stats["snr_sum"] += float(data.get("snr", 0))
+                                telemetry_stats["erle_sum"] += float(data.get("erle", 0))
+                                telemetry_stats["count"] += 1
+                        except Exception as e:
+                            log.error(f"upstream: failed to process text message: {e}")
+
                     raw = msg.get("bytes")
                     if raw:
                         await session.send_realtime_input(
                             audio=types.Blob(data=raw, mime_type="audio/pcm;rate=16000"))
+                        await monitor.broadcast_audio(session_id, raw, "user", 16000)
 
             async def handle(response):
                 sc = getattr(response, "server_content", None)
@@ -620,6 +1343,7 @@ async def ws(websocket: WebSocket):
                             "time": round(time.time() - start_time, 1),
                         })
                         await websocket.send_text(json.dumps({"type": "transcript", "role": "user", "text": it.text}))
+                        await monitor.broadcast_transcript(session_id, "user", it.text)
                     if ot and getattr(ot, "text", None):
                         session_turns.append({
                             "role": "swastik",
@@ -627,11 +1351,14 @@ async def ws(websocket: WebSocket):
                             "time": round(time.time() - start_time, 1),
                         })
                         await websocket.send_text(json.dumps({"type": "transcript", "role": "swastik", "text": ot.text}))
+                        await monitor.broadcast_transcript(session_id, "swastik", ot.text)
                     if mt and getattr(mt, "parts", None):
                         for part in mt.parts:
                             idata = getattr(part, "inline_data", None)
                             if idata and getattr(idata, "data", None):
+                                audio_chunks.extend(idata.data)
                                 await websocket.send_bytes(idata.data)  # 24k voice
+                                await monitor.broadcast_audio(session_id, idata.data, "agent", 24000)
                     if getattr(sc, "interrupted", None):
                         await websocket.send_text(json.dumps({"type": "interrupted"}))
                 if tc:
@@ -700,11 +1427,36 @@ async def ws(websocket: WebSocket):
         except Exception:
             pass
     finally:
+        monitor.end_call(session_id)
+        import wave
+        from pathlib import Path
+        
+        # Save actual session audio
+        memos_dir = Path(__file__).resolve().parent / "memos"
+        memos_dir.mkdir(exist_ok=True)
+        if audio_chunks:
+            memo_path = memos_dir / f"{session_id}.wav"
+            try:
+                with wave.open(str(memo_path), 'wb') as wav_file:
+                    wav_file.setnchannels(1)
+                    wav_file.setsampwidth(2)
+                    wav_file.setframerate(24000) # Gemini outputs 24kHz
+                    wav_file.writeframes(audio_chunks)
+            except Exception as e:
+                log.error(f"Failed to save audio memo: {e}")
+
         duration = max(1, int(time.time() - start_time))
+        avg_snr = round(telemetry_stats["snr_sum"] / telemetry_stats["count"], 2) if telemetry_stats["count"] > 0 else 0.0
+        avg_erle = round(telemetry_stats["erle_sum"] / telemetry_stats["count"], 2) if telemetry_stats["count"] > 0 else 0.0
+
+        # Record usage for billing
+        record_call_usage(clinic_id, duration, channel_type)
+
         if session_turns:
             triage = extract_clinical_summary(session_turns)
             audio_url = f"/api/audio/memo/{session_id}"
             save_call_log(
+                clinic_id=clinic_id,
                 session_id=session_id,
                 caller_name=caller_info["name"],
                 phone=caller_info["phone"],
@@ -714,7 +1466,10 @@ async def ws(websocket: WebSocket):
                 chief_complaint=triage.get("chief_complaint", "General Health Consultation"),
                 urgency_level=triage.get("urgency_level", "Routine"),
                 action_items=triage.get("action_items", ""),
+                outcome=triage.get("outcome", "Unclassified"),
                 audio_url=audio_url,
+                avg_snr=avg_snr,
+                avg_erle=avg_erle
             )
             dispatch_webhook("call.completed", {
                 "session_id": session_id,
@@ -726,9 +1481,9 @@ async def ws(websocket: WebSocket):
                 "action_items": triage.get("action_items", ""),
                 "turns_count": len(session_turns),
                 "audio_url": audio_url,
-                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": datetime.now(UTC).isoformat(),
             })
-    log.info("ws closed (session_id=%s)", session_id)
+    log.info("ws closed (session_id=%s, channel=%s)", session_id, channel_type)
 
 
 @app.post("/upload-receipt")
@@ -787,8 +1542,7 @@ Set verified=true ONLY if:
         # Strip markdown code fences if present
         if raw_text.startswith("```"):
             raw_text = raw_text.split("\n", 1)[1]  # remove first line
-            if raw_text.endswith("```"):
-                raw_text = raw_text[:-3]
+            raw_text = raw_text.removesuffix("```")
             raw_text = raw_text.strip()
 
         import json as json_mod
@@ -798,7 +1552,7 @@ Set verified=true ONLY if:
     except Exception as e:
         log.exception("Receipt verification failed")
         return JSONResponse(
-            {"verified": False, "reason": f"Verification error: {str(e)}"},
+            {"verified": False, "reason": f"Verification error: {e!s}"},
             status_code=500,
         )
 
@@ -812,8 +1566,14 @@ if FRONTEND_DIST.exists():
     if (FRONTEND_DIST / "icons").exists():
         app.mount("/icons", StaticFiles(directory=str(FRONTEND_DIST / "icons")), name="dist-icons")
 
-    @app.get("/{full_path:path}")
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
     async def serve_spa(full_path: str):
+        if not full_path or full_path.strip("/") == "":
+            index_path = FRONTEND_DIST / "index.html"
+            if index_path.exists():
+                return FileResponse(index_path)
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+
         if full_path in ("console", "console/"):
             return RedirectResponse(url="/console/", status_code=307)
         # 1. Exact file match in dist (e.g. pcm-processor.js, favicon.svg, swastik-logo.png)
@@ -821,7 +1581,8 @@ if FRONTEND_DIST.exists():
         if target.is_file():
             return FileResponse(target)
         if target.is_dir() and (target / "index.html").is_file():
-            return RedirectResponse(url=f"/{full_path}/", status_code=307)
+            clean_path = full_path.strip("/")
+            return RedirectResponse(url=f"/{clean_path}/", status_code=307)
         # 2. SPA fallback for client-side routes (/admin, /dashboard, /checkout, /buy, etc.)
         index_path = FRONTEND_DIST / "index.html"
         if index_path.exists():

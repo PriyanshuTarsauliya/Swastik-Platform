@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Mic, MessageCircle, CreditCard, Shield, Zap,
-  Globe, ChevronRight, Star, ArrowRight,
+  Mic, MessageCircle, CreditCard, Zap,
+  Globe, Star, ArrowRight,
   CheckCircle2, Sparkles, Headphones, Calendar,
   ExternalLink, PhoneCall, UserCheck, Activity,
   Menu, X, LogOut, User as UserIcon
@@ -10,8 +10,6 @@ import {
 import BorderBeam from '../components/inspira/BorderBeam'
 import CardSpotlight from '../components/inspira/CardSpotlight'
 import ShimmerButton from '../components/inspira/ShimmerButton'
-import Marquee from '../components/inspira/Marquee'
-import NumberTicker from '../components/inspira/NumberTicker'
 import { BentoCard } from '../components/inspira/BentoGrid'
 import VoiceSegmentation from '../components/VoiceSegmentation'
 import UseCasesSection from '../components/UseCasesSection'
@@ -19,19 +17,19 @@ import AnalyticsPreview from '../components/AnalyticsPreview'
 import TrustSecuritySection from '../components/TrustSecuritySection'
 import LiveVoiceWidget from '../components/inspira/LiveVoiceWidget'
 import { useLenis } from 'lenis/react'
-import SparklesText from '../components/inspira/SparklesText'
 import AuthModal from '../components/AuthModal'
 import { useAuth } from '../context/AuthContext'
 import AnimeScrollReveal from '../components/inspira/AnimeScrollReveal'
 import AnimeScrollProgress from '../components/inspira/AnimeScrollProgress'
 import AnimeSplitText from '../components/inspira/AnimeSplitText'
-import AnimeParallax from '../components/inspira/AnimeParallax'
 import AnimeCounter from '../components/inspira/AnimeCounter'
 import AnimeCallFlow from '../components/inspira/AnimeCallFlow'
 import AnimeVoiceStudio from '../components/inspira/AnimeVoiceStudio'
 import AnimeHero from '../components/inspira/AnimeHero'
 import TextReveal from '../components/inspira/TextReveal'
 import { useAnimeNavSpy } from '../components/inspira/AnimeNavSpy'
+import FAQSection from '../components/FAQSection'
+import FeedbackForm from '../components/FeedbackForm'
 /* ════════════════════════════════════════════════════════════
    Swastik AI — Autonomous Voice Platform
    Design Objective & UX Strategy Implementation
@@ -505,7 +503,7 @@ function Features() {
             className="md:col-span-1 bento-card"
             Icon={UserCheck}
             badge="Clinical Safety"
-            description="Intelligently detects complex or acute queries and executes an instant warm transfer to duty clinic staff with full audio transcripts."
+            description="Intelligently detects complex or acute queries and sends an immediate emergency alert to duty clinic staff with full clinical transcripts."
             cta="Explore safety handoff"
             href="#security"
           />
@@ -930,7 +928,10 @@ function Footer() {
 
         <div className="border-t border-white/10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#94a3b8]">
           <p>© {new Date().getFullYear()} Swastik AI Technologies. Made with ❤️ by Swastik AI.</p>
-          <p>Kanpur • Jabalpur • Bhopal • Delhi NCR</p>
+          <div className="flex flex-col sm:items-end gap-1">
+            <p>Kanpur • Jabalpur • Bhopal • Delhi NCR</p>
+            <p>For issues and bugs, contact developer: <a href="mailto:priyanshutarsauliya@gmail.com" className="hover:text-[#14c8b2] transition-colors text-white">priyanshutarsauliya@gmail.com</a></p>
+          </div>
         </div>
       </div>
     </footer>
@@ -950,7 +951,6 @@ export default function Landing() {
         <StatsBanner />
         <AnimeTimelineDemoStrip />
         <VoiceSegmentation />
-        <AnimeVoiceStudio />
         <UseCasesSection />
         <Features />
         <AnimeCallFlow />
@@ -958,7 +958,9 @@ export default function Landing() {
         <Pricing />
         <TrustSecuritySection />
         <Testimonials />
+        <FAQSection />
         <CTABanner />
+        <FeedbackForm />
       </main>
       <Footer />
     </div>

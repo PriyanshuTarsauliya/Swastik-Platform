@@ -5,13 +5,13 @@ Seamlessly supports:
 2. SQLite (local development / offline testing via appointments.db)
 """
 
+import logging
 import os
 import re
-import logging
 import sqlite3
-from pathlib import Path
-from typing import Any, Optional, Dict, List, Union
 from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
 
 log = logging.getLogger("swastik-db")
 
@@ -32,7 +32,6 @@ DBIntegrityError = (sqlite3.IntegrityError, PostgresIntegrityError)
 
 if IS_POSTGRES:
     import psycopg2
-    from psycopg2 import extras
     # Render sometimes gives postgres:// which SQLAlchemy/psycopg2 prefers as postgresql://
     if DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -40,11 +39,11 @@ if IS_POSTGRES:
 
 class DictRowWrapper:
     """Provides uniform dict-like and index-like access across SQLite and Postgres."""
-    def __init__(self, data: Dict[str, Any], keys: List[str]):
+    def __init__(self, data: dict[str, Any], keys: list[str]):
         self._data = dict(data)
         self._keys = list(keys)
 
-    def __getitem__(self, item: Union[str, int]) -> Any:
+    def __getitem__(self, item: str | int) -> Any:
         if isinstance(item, int):
             return self._data[self._keys[item]]
         return self._data.get(item)
@@ -84,7 +83,7 @@ class UniversalCursor:
         q = re.sub(r"date\('now'\)", "CURRENT_DATE", q, flags=re.IGNORECASE)
         return q
 
-    def execute(self, query: str, params: Optional[Union[tuple, list, dict]] = None):
+    def execute(self, query: str, params: tuple | list | dict | None = None):
         translated = self._translate_query(query)
         if self.is_postgres:
             # If it's an INSERT statement without RETURNING, append RETURNING id to capture lastrowid
@@ -120,7 +119,7 @@ class UniversalCursor:
         translated = self._translate_query(query)
         return self.raw_cursor.executemany(translated, seq_of_params)
 
-    def fetchone(self) -> Optional[DictRowWrapper]:
+    def fetchone(self) -> DictRowWrapper | None:
         row = self.raw_cursor.fetchone()
         if row is None:
             return None
@@ -131,7 +130,7 @@ class UniversalCursor:
             # sqlite3.Row
             return DictRowWrapper({k: row[k] for k in row.keys()}, list(row.keys()))
 
-    def fetchall(self) -> List[DictRowWrapper]:
+    def fetchall(self) -> list[DictRowWrapper]:
         rows = self.raw_cursor.fetchall()
         if not rows:
             return []
@@ -158,7 +157,7 @@ class UniversalConnection:
             raw_cur = self.raw_conn.cursor()
         return UniversalCursor(raw_cur, self.is_postgres)
 
-    def execute(self, query: str, params: Optional[Union[tuple, list, dict]] = None) -> UniversalCursor:
+    def execute(self, query: str, params: tuple | list | dict | None = None) -> UniversalCursor:
         cur = self.cursor()
         cur.execute(query, params)
         return cur
@@ -188,8 +187,13 @@ def get_db():
         finally:
             wrapped.close()
     else:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=10.0)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA synchronous = NORMAL;")
+        conn.execute("PRAGMA busy_timeout = 5000;")
+        conn.execute("PRAGMA cache_size = -64000;")
+        conn.execute("PRAGMA foreign_keys = ON;")
         wrapped = UniversalConnection(conn, is_postgres=False)
         try:
             yield wrapped
@@ -207,8 +211,32 @@ def init_db():
         if IS_POSTGRES:
             # PostgreSQL schema
             db.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    salt TEXT NOT NULL,
+                    role TEXT DEFAULT 'doctor',
+                    phone TEXT DEFAULT '',
+                    avatar_url TEXT DEFAULT '',
+                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS clinics (
+                    id TEXT PRIMARY KEY,
+                    owner_user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    system_prompt TEXT,
+                    theme_color TEXT DEFAULT '#10B981',
+                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS appointments (
                     id SERIAL PRIMARY KEY,
+                    clinic_id TEXT REFERENCES clinics(id) ON DELETE CASCADE,
                     patient_name TEXT NOT NULL,
                     slot_time TEXT NOT NULL,
                     phone TEXT,
@@ -225,12 +253,12 @@ def init_db():
             db.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     id SERIAL PRIMARY KEY,
+                    clinic_id TEXT REFERENCES clinics(id) ON DELETE CASCADE,
                     order_id TEXT UNIQUE NOT NULL,
                     plan_id TEXT NOT NULL,
                     plan_name TEXT NOT NULL,
                     amount INTEGER NOT NULL,
                     doctor_name TEXT NOT NULL,
-                    clinic_name TEXT NOT NULL,
                     phone TEXT NOT NULL,
                     email TEXT,
                     city TEXT,
@@ -243,6 +271,7 @@ def init_db():
             db.execute("""
                 CREATE TABLE IF NOT EXISTS call_logs (
                     id SERIAL PRIMARY KEY,
+                    clinic_id TEXT REFERENCES clinics(id) ON DELETE CASCADE,
                     session_id TEXT UNIQUE NOT NULL,
                     caller_name TEXT DEFAULT 'Anonymous Caller',
                     phone TEXT,
@@ -252,7 +281,10 @@ def init_db():
                     chief_complaint TEXT DEFAULT '',
                     urgency_level TEXT DEFAULT 'Routine',
                     action_items TEXT DEFAULT '',
+                    outcome TEXT DEFAULT 'Unclassified',
                     audio_url TEXT DEFAULT '',
+                    avg_snr REAL DEFAULT 0.0,
+                    avg_erle REAL DEFAULT 0.0,
                     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -261,20 +293,6 @@ def init_db():
                     key TEXT PRIMARY KEY,
                     value TEXT,
                     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            db.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    email TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    salt TEXT NOT NULL,
-                    role TEXT DEFAULT 'doctor',
-                    clinic_name TEXT DEFAULT 'Dr. Sharma''s Clinic',
-                    phone TEXT DEFAULT '',
-                    avatar_url TEXT DEFAULT '',
-                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             db.execute("""
@@ -288,8 +306,33 @@ def init_db():
         else:
             # SQLite schema
             db.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    salt TEXT NOT NULL,
+                    role TEXT DEFAULT 'doctor',
+                    phone TEXT DEFAULT '',
+                    avatar_url TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS clinics (
+                    id TEXT PRIMARY KEY,
+                    owner_user_id INTEGER,
+                    name TEXT NOT NULL,
+                    system_prompt TEXT,
+                    theme_color TEXT DEFAULT '#10B981',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS appointments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    clinic_id TEXT,
                     patient_name TEXT NOT NULL,
                     slot_time TEXT NOT NULL,
                     phone TEXT,
@@ -300,30 +343,36 @@ def init_db():
                     fee TEXT DEFAULT '₹499',
                     status TEXT DEFAULT 'CONFIRMED',
                     reschedule_count INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    reminder_24h_sent INTEGER DEFAULT 0,
+                    reminder_2h_sent INTEGER DEFAULT 0,
+                    no_show_recovery_sent INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
                 )
             """)
             db.execute("""
                 CREATE TABLE IF NOT EXISTS orders (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    clinic_id TEXT,
                     order_id TEXT UNIQUE NOT NULL,
                     plan_id TEXT NOT NULL,
                     plan_name TEXT NOT NULL,
                     amount INTEGER NOT NULL,
                     doctor_name TEXT NOT NULL,
-                    clinic_name TEXT NOT NULL,
                     phone TEXT NOT NULL,
                     email TEXT,
                     city TEXT,
                     status TEXT DEFAULT 'PENDING',
                     payment_method TEXT,
                     transaction_ref TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
                 )
             """)
             db.execute("""
                 CREATE TABLE IF NOT EXISTS call_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    clinic_id TEXT,
                     session_id TEXT UNIQUE NOT NULL,
                     caller_name TEXT DEFAULT 'Anonymous Caller',
                     phone TEXT,
@@ -333,8 +382,12 @@ def init_db():
                     chief_complaint TEXT DEFAULT '',
                     urgency_level TEXT DEFAULT 'Routine',
                     action_items TEXT DEFAULT '',
+                    outcome TEXT DEFAULT 'Unclassified',
                     audio_url TEXT DEFAULT '',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    avg_snr REAL DEFAULT 0.0,
+                    avg_erle REAL DEFAULT 0.0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
                 )
             """)
             db.execute("""
@@ -342,20 +395,6 @@ def init_db():
                     key TEXT PRIMARY KEY,
                     value TEXT,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            db.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    email TEXT UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    salt TEXT NOT NULL,
-                    role TEXT DEFAULT 'doctor',
-                    clinic_name TEXT DEFAULT 'Dr. Sharma''s Clinic',
-                    phone TEXT DEFAULT '',
-                    avatar_url TEXT DEFAULT '',
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             db.execute("""
@@ -368,22 +407,230 @@ def init_db():
                 )
             """)
 
-            # SQLite migration checks
-            cur = db.cursor()
-            cur.execute("PRAGMA table_info(call_logs)")
-            cols = {row[1] for row in cur.fetchall()}
-            if "chief_complaint" not in cols:
-                db.execute("ALTER TABLE call_logs ADD COLUMN chief_complaint TEXT DEFAULT ''")
-            if "urgency_level" not in cols:
-                db.execute("ALTER TABLE call_logs ADD COLUMN urgency_level TEXT DEFAULT 'Routine'")
-            if "action_items" not in cols:
-                db.execute("ALTER TABLE call_logs ADD COLUMN action_items TEXT DEFAULT ''")
-            if "audio_url" not in cols:
-                db.execute("ALTER TABLE call_logs ADD COLUMN audio_url TEXT DEFAULT ''")
+        # ── High-Performance Database Indexes ──────────────────
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_appointments_clinic_date ON appointments(clinic_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_appointments_phone ON appointments(phone)",
+            "CREATE INDEX IF NOT EXISTS idx_call_logs_clinic_created ON call_logs(clinic_id, created_at DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_call_logs_session ON call_logs(session_id)",
+            "CREATE INDEX IF NOT EXISTS idx_orders_clinic ON orders(clinic_id)",
+            "CREATE INDEX IF NOT EXISTS idx_orders_order_id ON orders(order_id)",
+            "CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)",
+            "CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_clinics_owner ON clinics(owner_user_id)",
+        ]
+        for idx_sql in indexes:
+            try:
+                db.execute(idx_sql)
+            except Exception:
+                pass
 
-            cur.execute("PRAGMA table_info(appointments)")
-            appt_cols = {row[1] for row in cur.fetchall()}
-            if "reschedule_count" not in appt_cols:
-                db.execute("ALTER TABLE appointments ADD COLUMN reschedule_count INTEGER DEFAULT 0")
+        # ── Multi-tenant extensions (idempotent) ─────────────────
+        _add_multi_tenant_tables(db, IS_POSTGRES)
 
-    log.info("Database initialized successfully (engine=%s)", "PostgreSQL" if IS_POSTGRES else "SQLite")
+        log.info("Database initialized successfully (engine=%s)", "PostgreSQL" if IS_POSTGRES else "SQLite")
+
+
+def _add_multi_tenant_tables(db, is_postgres: bool):
+    """Add multi-tenant tables and columns. Safe to call on every startup."""
+
+    # ── ALTER clinics table: add new columns ──
+    new_clinic_cols = [
+        ("slug", "TEXT"),
+        ("timezone", "TEXT DEFAULT 'Asia/Kolkata'"),
+        ("languages", "TEXT DEFAULT 'en,hi'"),
+        ("voice_persona", "TEXT DEFAULT 'warm_professional'"),
+        ("status", "TEXT DEFAULT 'active'"),
+        ("plan_id", "TEXT"),
+    ]
+    for col_name, col_def in new_clinic_cols:
+        try:
+            db.execute(f"ALTER TABLE clinics ADD COLUMN {col_name} {col_def}")
+        except Exception:
+            pass  # Column already exists
+
+    try:
+        db.execute("ALTER TABLE call_logs ADD COLUMN outcome TEXT DEFAULT 'Unclassified'")
+    except Exception:
+        pass
+
+    new_appt_cols = [
+        ("reminder_24h_sent", "INTEGER DEFAULT 0"),
+        ("reminder_2h_sent", "INTEGER DEFAULT 0"),
+        ("no_show_recovery_sent", "INTEGER DEFAULT 0"),
+    ]
+    for col_name, col_def in new_appt_cols:
+        try:
+            db.execute(f"ALTER TABLE appointments ADD COLUMN {col_name} {col_def}")
+        except Exception:
+            pass
+
+    new_user_cols = [
+        ("is_verified", "INTEGER DEFAULT 0"),
+        ("otp_code", "TEXT DEFAULT ''"),
+    ]
+    for col_name, col_def in new_user_cols:
+        try:
+            db.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+        except Exception:
+            pass
+
+    new_appt_cols = [
+        ("reminder_24h_sent", "INTEGER DEFAULT 0"),
+        ("reminder_2h_sent", "INTEGER DEFAULT 0"),
+        ("no_show_recovery_sent", "INTEGER DEFAULT 0"),
+    ]
+    for col_name, col_def in new_appt_cols:
+        try:
+            db.execute(f"ALTER TABLE appointments ADD COLUMN {col_name} {col_def}")
+        except Exception:
+            pass
+
+    # ── Plans table ──
+    if is_postgres:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS plans (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                monthly_price_inr INTEGER,
+                included_minutes INTEGER,
+                overage_paise_per_min INTEGER,
+                max_phone_numbers INTEGER DEFAULT 0,
+                allows_widget INTEGER DEFAULT 1,
+                allows_smart_link INTEGER DEFAULT 1,
+                allows_phone INTEGER DEFAULT 0
+            )
+        """)
+    else:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS plans (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                monthly_price_inr INTEGER,
+                included_minutes INTEGER,
+                overage_paise_per_min INTEGER,
+                max_phone_numbers INTEGER DEFAULT 0,
+                allows_widget INTEGER DEFAULT 1,
+                allows_smart_link INTEGER DEFAULT 1,
+                allows_phone INTEGER DEFAULT 0
+            )
+        """)
+
+    # ── Clinic Profile table ──
+    if is_postgres:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS clinic_profile (
+                clinic_id TEXT PRIMARY KEY REFERENCES clinics(id) ON DELETE CASCADE,
+                greeting TEXT,
+                services TEXT,
+                working_hours TEXT,
+                address TEXT,
+                booking_rules TEXT,
+                escalation_number TEXT,
+                custom_instructions TEXT,
+                doctor_name TEXT,
+                consultation_fee TEXT DEFAULT '₹499'
+            )
+        """)
+    else:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS clinic_profile (
+                clinic_id TEXT PRIMARY KEY,
+                greeting TEXT,
+                services TEXT,
+                working_hours TEXT,
+                address TEXT,
+                booking_rules TEXT,
+                escalation_number TEXT,
+                custom_instructions TEXT,
+                doctor_name TEXT,
+                consultation_fee TEXT DEFAULT '₹499',
+                FOREIGN KEY(clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
+            )
+        """)
+
+    # ── Clinic Channels table ──
+    if is_postgres:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS clinic_channels (
+                id SERIAL PRIMARY KEY,
+                clinic_id TEXT REFERENCES clinics(id) ON DELETE CASCADE,
+                channel_type TEXT NOT NULL,
+                identifier TEXT NOT NULL,
+                provider TEXT,
+                provider_sid TEXT,
+                is_active INTEGER DEFAULT 1,
+                UNIQUE(channel_type, identifier)
+            )
+        """)
+    else:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS clinic_channels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                clinic_id TEXT,
+                channel_type TEXT NOT NULL,
+                identifier TEXT NOT NULL,
+                provider TEXT,
+                provider_sid TEXT,
+                is_active INTEGER DEFAULT 1,
+                UNIQUE(channel_type, identifier),
+                FOREIGN KEY(clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
+            )
+        """)
+
+    # ── Usage Monthly rollup table ──
+    if is_postgres:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS usage_monthly (
+                clinic_id TEXT REFERENCES clinics(id) ON DELETE CASCADE,
+                year_month TEXT,
+                minutes_used REAL DEFAULT 0,
+                PRIMARY KEY (clinic_id, year_month)
+            )
+        """)
+    else:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS usage_monthly (
+                clinic_id TEXT,
+                year_month TEXT,
+                minutes_used REAL DEFAULT 0,
+                PRIMARY KEY (clinic_id, year_month),
+                FOREIGN KEY(clinic_id) REFERENCES clinics(id) ON DELETE CASCADE
+            )
+        """)
+
+    # ── Index for fast channel lookups ──
+    try:
+        db.execute("CREATE INDEX IF NOT EXISTS idx_channels_lookup ON clinic_channels(channel_type, identifier)")
+    except Exception:
+        pass
+
+    # ── Seed default plans ──
+    _seed_plans(db)
+
+    db.commit()
+    log.info("Multi-tenant tables initialized successfully")
+
+
+def _seed_plans(db):
+    """Seed the three default subscription plans if none exist."""
+    cursor = db.cursor()
+    cursor.execute("SELECT COUNT(*) FROM plans")
+    count = cursor.fetchone()[0]
+    if count > 0:
+        return
+
+    default_plans = [
+        ("starter", "Starter", 2999, 200, 1200, 0, 1, 1, 0),
+        ("growth", "Growth", 7499, 500, 1100, 1, 1, 1, 1),
+        ("clinic_pro", "Clinic Pro", 14999, 1200, 1000, 3, 1, 1, 1),
+    ]
+    for plan in default_plans:
+        cursor.execute("""
+            INSERT INTO plans (id, name, monthly_price_inr, included_minutes,
+                             overage_paise_per_min, max_phone_numbers,
+                             allows_widget, allows_smart_link, allows_phone)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, plan)
+
+    log.info("Seeded %d default plans", len(default_plans))

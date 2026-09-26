@@ -1,21 +1,92 @@
 """Swastik AI tools for Gemini Live API session."""
 
-import io
-import os
-import sqlite3
-import logging
-import urllib.parse
 import hashlib
+import io
+import logging
+import os
 import secrets
-from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any
+import sqlite3
+import urllib.parse
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from backend.database import get_db, init_db as db_init, DB_PATH, DBIntegrityError
+from cachetools import TTLCache
+
+from backend.database import DBIntegrityError, get_db
+from backend.database import init_db as db_init
 
 log = logging.getLogger("swastik-agent")
 
-def hash_password(password: str, salt: Optional[str] = None) -> tuple[str, str]:
+def send_sms(to_number: str, body: str) -> bool:
+    """Send an SMS using Twilio."""
+    account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    from_number = os.environ.get("TWILIO_PHONE_NUMBER", "+1234567890")
+    
+    if not account_sid or not auth_token:
+        log.warning("Twilio credentials not found; skipping SMS to %s", to_number)
+        return False
+        
+    try:
+        from twilio.rest import Client
+        client = Client(account_sid, auth_token)
+        client.messages.create(
+            body=body,
+            from_=from_number,
+            to=to_number
+        )
+        return True
+    except Exception as e:
+        log.error("Failed to send Twilio SMS to %s: %s", to_number, e)
+        return False
+
+def send_welcome_email(to_email: str, clinic_name: str) -> bool:
+    """Send a welcome email using Resend."""
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        log.warning("RESEND_API_KEY not found; skipping welcome email to %s", to_email)
+        return False
+        
+    try:
+        import urllib.request
+        import json
+        
+        req = urllib.request.Request("https://api.resend.com/emails", method="POST")
+        req.add_header("Authorization", f"Bearer {api_key}")
+        req.add_header("Content-Type", "application/json")
+        
+        html_body = f"""
+        <div style="font-family: sans-serif; padding: 20px;">
+            <h2>Welcome to Swastik AI, {clinic_name}!</h2>
+            <p>Your AI voice receptionist is ready to go.</p>
+            <ul>
+                <li><strong>Dashboard:</strong> <a href="https://voice.swastik.ai/admin">voice.swastik.ai/admin</a></li>
+                <li><strong>Smart Link:</strong> Find it in your Channels tab to share on WhatsApp!</li>
+            </ul>
+            <p>Need help? Just reply to this email.</p>
+            <p>Best,<br>The Swastik Team</p>
+        </div>
+        """
+        
+        data = json.dumps({
+            "from": "Swastik AI <onboarding@swastik.ai>",
+            "to": [to_email],
+            "subject": "Welcome to Swastik AI! 🚀",
+            "html": html_body
+        }).encode('utf-8')
+        
+        with urllib.request.urlopen(req, data=data) as response:
+            if response.status in (200, 201):
+                return True
+        return False
+    except Exception as e:
+        log.error("Failed to send welcome email to %s: %s", to_email, e)
+        return False
+
+# In-process session cache: 60s TTL to prevent redundant DB hits on consecutive API calls
+_session_cache = TTLCache(maxsize=1000, ttl=60)
+
+def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
     """Securely hash a password with PBKDF2-HMAC-SHA256 and unique salt."""
     if not salt:
         salt = secrets.token_hex(16)
@@ -48,22 +119,137 @@ def seed_default_user():
                 demo_email = "drsharma@swastik.ai"
                 demo_password = "Doctor@2026"
                 pw_hash, salt = hash_password(demo_password)
-                conn.execute("""
-                    INSERT INTO users (name, email, password_hash, salt, role, clinic_name, phone)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                cursor.execute("""
+                    INSERT INTO users (name, email, password_hash, salt, role, phone)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 """, (
                     "Dr. Sharma",
                     demo_email,
                     pw_hash,
                     salt,
                     "doctor",
-                    "Dr. Sharma's Clinic",
                     "+91 98765 43210"
                 ))
+                user_id = cursor.lastrowid
+                
+                from backend.persona import SWASTIK_INSTRUCTION
+                clinic_id = "dr-sharma"
+                cursor.execute("""
+                    INSERT INTO clinics (id, owner_user_id, name, system_prompt, theme_color,
+                                        slug, timezone, languages, voice_persona, status, plan_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    clinic_id,
+                    user_id,
+                    "Dr. Sharma's Clinic",
+                    SWASTIK_INSTRUCTION,
+                    "#10B981",
+                    "dr-sharma",
+                    "Asia/Kolkata",
+                    "en,hi",
+                    "warm_professional",
+                    "active",
+                    "starter",
+                ))
+
+                # Seed clinic profile with structured data
+                import json
+                services = json.dumps([
+                    {"name": "Women's Health (PCOS, Fibroids)", "price": 499, "duration_min": 30},
+                    {"name": "Skin (Acne, Eczema, Psoriasis)", "price": 499, "duration_min": 30},
+                    {"name": "Hair Fall Consultation", "price": 499, "duration_min": 30},
+                    {"name": "Digestive (Acidity, IBS, Piles)", "price": 499, "duration_min": 30},
+                    {"name": "Chronic Care (Diabetes, Thyroid)", "price": 499, "duration_min": 30},
+                    {"name": "Children's Health", "price": 499, "duration_min": 30},
+                    {"name": "General Health & Wellness", "price": 499, "duration_min": 30},
+                ])
+                working_hours = json.dumps({
+                    "mon": "11:00-13:30",
+                    "tue": "11:00-13:30",
+                    "wed": "11:00-13:30",
+                    "thu": "11:00-13:30",
+                    "fri": "11:00-13:30",
+                    "sat": "11:00-13:30",
+                    "sun": "closed",
+                })
+                cursor.execute("""
+                    INSERT INTO clinic_profile (
+                        clinic_id, greeting, services, working_hours, address,
+                        booking_rules, escalation_number, doctor_name, consultation_fee
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    clinic_id,
+                    "Namaste ji! Dr. Sharma's Clinic se Swastik bol rahi hoon, main AI assistant hoon. Kahiye, kaise madad karoon?",
+                    services,
+                    working_hours,
+                    "Delhi NCR",
+                    "₹499 non-refundable. One free reschedule if requested at least 24 hours before the slot.",
+                    "WhatsApp support: 11:00 AM to 6:00 PM, Mon-Sat. Email: pg7560259@gmail.com",
+                    "Dr. A. K. Sharma",
+                    "₹499",
+                ))
+
+                # Seed default channels (widget + smart_link)
+                cursor.execute("""
+                    INSERT INTO clinic_channels (clinic_id, channel_type, identifier, is_active)
+                    VALUES (?, 'widget', ?, 1)
+                """, (clinic_id, clinic_id))
+                cursor.execute("""
+                    INSERT INTO clinic_channels (clinic_id, channel_type, identifier, is_active)
+                    VALUES (?, 'smart_link', ?, 1)
+                """, (clinic_id, "dr-sharma"))
+
                 conn.commit()
-                log.info("Default demo doctor user seeded: %s", demo_email)
+                log.info("Default demo doctor user seeded: %s (with profile + channels)", demo_email)
+
+            # Backfill: if clinic exists but profile doesn't, seed it
+            _backfill_existing_clinics(conn)
+
     except Exception as e:
         log.error(f"Failed to seed default user: {e}")
+
+
+def _backfill_existing_clinics(conn):
+    """Ensure existing clinics have profile and channels entries."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT c.id, c.slug FROM clinics c
+        LEFT JOIN clinic_profile p ON p.clinic_id = c.id
+        WHERE p.clinic_id IS NULL
+    """)
+    rows = cursor.fetchall()
+    for row in rows:
+        clinic_id = row[0]
+        slug = row[1] or clinic_id
+        # Create empty profile
+        try:
+            cursor.execute("""
+                INSERT INTO clinic_profile (clinic_id, doctor_name, consultation_fee)
+                VALUES (?, 'Doctor', '₹499')
+            """, (clinic_id,))
+        except Exception:
+            pass
+
+        # Ensure slug is set
+        if not row[1]:
+            try:
+                cursor.execute("UPDATE clinics SET slug = ? WHERE id = ?", (clinic_id, clinic_id))
+            except Exception:
+                pass
+
+        # Ensure channels exist
+        for ch_type, ch_id in [("widget", clinic_id), ("smart_link", slug)]:
+            try:
+                cursor.execute("""
+                    INSERT INTO clinic_channels (clinic_id, channel_type, identifier, is_active)
+                    VALUES (?, ?, ?, 1)
+                """, (clinic_id, ch_type, ch_id))
+            except Exception:
+                pass
+
+    if rows:
+        conn.commit()
+        log.info("Backfilled %d existing clinics with profile + channels", len(rows))
 
 def create_user(
     name: str,
@@ -73,8 +259,8 @@ def create_user(
     clinic_name: str = "Dr. Sharma's Clinic",
     phone: str = "",
     avatar_url: str = ""
-) -> Dict[str, Any]:
-    """Create a new user in SQLite."""
+) -> dict[str, Any]:
+    """Create a new user in SQLite and a default clinic if role is doctor."""
     email_clean = email.strip().lower()
     name_clean = name.strip()
     if not name_clean:
@@ -84,16 +270,53 @@ def create_user(
     if len(password) < 6:
         raise ValueError("Password must be at least 6 characters long")
 
+    import random
+    otp_code = str(random.randint(100000, 999999))
     pw_hash, salt = hash_password(password)
 
     with get_db() as conn:
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                INSERT INTO users (name, email, password_hash, salt, role, clinic_name, phone, avatar_url)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (name_clean, email_clean, pw_hash, salt, role, clinic_name, phone, avatar_url))
+                INSERT INTO users (name, email, password_hash, salt, role, phone, avatar_url, otp_code, is_verified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (name_clean, email_clean, pw_hash, salt, role, phone, avatar_url, otp_code, 0))
             user_id = cursor.lastrowid
+            
+            if role == "doctor":
+                import re as re_mod
+                import uuid
+
+                from backend.persona import SWASTIK_INSTRUCTION
+                clinic_id = str(uuid.uuid4())[:8]
+                # Generate slug from clinic name
+                slug = re_mod.sub(r'[^a-z0-9]+', '-', clinic_name.lower()).strip('-')
+                # Ensure slug uniqueness by appending short uuid
+                slug = f"{slug}-{clinic_id[:4]}"
+
+                cursor.execute("""
+                    INSERT INTO clinics (id, owner_user_id, name, system_prompt, theme_color,
+                                        slug, timezone, languages, voice_persona, status, plan_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (clinic_id, user_id, clinic_name, SWASTIK_INSTRUCTION, "#10B981",
+                      slug, "Asia/Kolkata", "en,hi", "warm_professional", "active", "starter"))
+
+                # Create empty profile for the new clinic
+                cursor.execute("""
+                    INSERT INTO clinic_profile (clinic_id, doctor_name, consultation_fee)
+                    VALUES (?, ?, '₹499')
+                """, (clinic_id, name_clean))
+
+                # Create default channels (widget + smart_link)
+                cursor.execute("""
+                    INSERT INTO clinic_channels (clinic_id, channel_type, identifier, is_active)
+                    VALUES (?, 'widget', ?, 1)
+                """, (clinic_id, clinic_id))
+                cursor.execute("""
+                    INSERT INTO clinic_channels (clinic_id, channel_type, identifier, is_active)
+                    VALUES (?, 'smart_link', ?, 1)
+                """, (clinic_id, slug))
+
             conn.commit()
             return {
                 "id": user_id,
@@ -103,18 +326,20 @@ def create_user(
                 "clinic_name": clinic_name,
                 "phone": phone,
                 "avatar_url": avatar_url,
+                "otp_code": otp_code,
+                "is_verified": 0,
             }
         except DBIntegrityError:
             raise ValueError("An account with this email already exists")
 
-def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
+def authenticate_user(email: str, password: str) -> dict[str, Any] | None:
     """Authenticate user credentials and return user profile if valid."""
     email_clean = email.strip().lower()
     with get_db() as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT id, name, email, password_hash, salt, role, clinic_name, phone, avatar_url
+            SELECT id, name, email, password_hash, salt, role, phone, avatar_url, is_verified
             FROM users WHERE email = ?
         """, (email_clean,))
         row = cursor.fetchone()
@@ -127,16 +352,16 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
                 "name": row["name"],
                 "email": row["email"],
                 "role": row["role"],
-                "clinic_name": row["clinic_name"],
                 "phone": row["phone"],
                 "avatar_url": row["avatar_url"],
+                "is_verified": row.get("is_verified", 0),
             }
         return None
 
-def create_session(user_id: int, days_valid: int = 30) -> str:
+def create_session(user_id: int, days_valid: int = 1) -> str:
     """Create a new session token for the given user."""
     token = secrets.token_urlsafe(32)
-    expires_at = (datetime.now(timezone.utc) + timedelta(days=days_valid)).isoformat()
+    expires_at = (datetime.now(UTC) + timedelta(days=days_valid)).isoformat()
     with get_db() as conn:
         conn.execute(
             "INSERT INTO user_sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
@@ -145,17 +370,22 @@ def create_session(user_id: int, days_valid: int = 30) -> str:
         conn.commit()
     return token
 
-def get_user_by_session_token(token: str) -> Optional[Dict[str, Any]]:
-    """Retrieve user associated with session token if not expired."""
+def get_user_by_session_token(token: str) -> dict[str, Any] | None:
+    """Retrieve user associated with session token if not expired (with in-memory TTL caching)."""
     if not token:
         return None
+    
+    if token in _session_cache:
+        return _session_cache[token]
+
     with get_db() as conn:
-        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT u.id, u.name, u.email, u.role, u.clinic_name, u.phone, u.avatar_url, s.expires_at
+            SELECT u.id, u.name, u.email, u.role, u.phone, u.avatar_url, u.is_verified, s.expires_at,
+                   c.name AS clinic_name
             FROM user_sessions s
             JOIN users u ON s.user_id = u.id
+            LEFT JOIN clinics c ON c.owner_user_id = u.id
             WHERE s.token = ?
         """, (token,))
         row = cursor.fetchone()
@@ -163,31 +393,34 @@ def get_user_by_session_token(token: str) -> Optional[Dict[str, Any]]:
             return None
         try:
             expires_at = datetime.fromisoformat(row["expires_at"])
-            if datetime.now(timezone.utc) > expires_at:
+            if datetime.now(UTC) > expires_at:
                 conn.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
-                conn.commit()
+                _session_cache.pop(token, None)
                 return None
         except Exception:
             pass
         
-        return {
+        user_data = {
             "id": row["id"],
             "name": row["name"],
             "email": row["email"],
             "role": row["role"],
-            "clinic_name": row["clinic_name"],
-            "phone": row["phone"],
-            "avatar_url": row["avatar_url"],
+            "clinic_name": row.get("clinic_name") or "Dr. Sharma's Clinic",
+            "phone": row["phone"] or "",
+            "avatar_url": row["avatar_url"] or "",
+            "is_verified": row.get("is_verified", 0),
         }
+        _session_cache[token] = user_data
+        return user_data
 
 def delete_session(token: str) -> bool:
     """Delete session token to sign out user."""
     if not token:
         return False
+    _session_cache.pop(token, None)
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
-        conn.commit()
         return cursor.rowcount > 0
 
 init_db()
@@ -381,10 +614,21 @@ def extract_clinical_summary(transcript_list: list) -> dict:
 
     action_items_list.append("Verify WhatsApp intake form submission before appointment.")
 
+    # 4. Outcome Classification
+    outcome_classification = "Abandoned"
+    if len(user_texts) >= 1:
+        if any(w in all_text for w in ["book", "confirm", "schedule", "appointment", "time"]):
+            outcome_classification = "Booked"
+        elif any(w in all_text for w in ["emergency", "urgent", "transfer", "speak to doctor"]):
+            outcome_classification = "Escalated"
+        else:
+            outcome_classification = "FAQ"
+
     return {
         "chief_complaint": chief_complaint,
         "urgency_level": urgency_level,
         "action_items": " • ".join(action_items_list),
+        "outcome": outcome_classification,
     }
 
 def dispatch_webhook(event_type: str, data: dict):
@@ -392,8 +636,8 @@ def dispatch_webhook(event_type: str, data: dict):
     Dispatch webhook event to configured webhook URL in a non-blocking daemon thread.
     Supported events: 'appointment.booked', 'call.completed'
     """
-    import threading
     import json
+    import threading
     import urllib.request
 
     webhook_url = get_setting("webhook_url", "").strip()
@@ -404,7 +648,7 @@ def dispatch_webhook(event_type: str, data: dict):
     def _sender():
         payload = {
             "event": event_type,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "source": "Swastik AI Voice Agent",
             "clinic": "Dr. Sharma's Clinic",
             "data": data,
@@ -427,6 +671,7 @@ def dispatch_webhook(event_type: str, data: dict):
     threading.Thread(target=_sender, daemon=True, name="webhook-dispatcher").start()
 
 def save_call_log(
+    clinic_id: str,
     session_id: str,
     caller_name: str,
     phone: str,
@@ -436,7 +681,10 @@ def save_call_log(
     chief_complaint: str = "",
     urgency_level: str = "Routine",
     action_items: str = "",
+    outcome: str = "Unclassified",
     audio_url: str = "",
+    avg_snr: float = 0.0,
+    avg_erle: float = 0.0,
 ):
     """Save call transcript and metadata including clinical triage and audio memo to SQLite."""
     import json
@@ -444,30 +692,53 @@ def save_call_log(
         with get_db() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO call_logs (
-                    session_id, caller_name, phone, duration_seconds, summary,
-                    transcript_json, chief_complaint, urgency_level, action_items, audio_url
+                    clinic_id, session_id, caller_name, phone, duration_seconds, summary,
+                    transcript_json, chief_complaint, urgency_level, action_items, outcome, audio_url,
+                    avg_snr, avg_erle
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                session_id, caller_name, phone, duration_seconds, summary,
-                json.dumps(transcript_list), chief_complaint, urgency_level, action_items, audio_url
+                clinic_id, session_id, caller_name, phone, duration_seconds, summary,
+                json.dumps(transcript_list), chief_complaint, urgency_level, action_items, outcome, audio_url,
+                avg_snr, avg_erle
             ))
             conn.commit()
             log.info(f"Saved call log for session {session_id} ({duration_seconds}s, triage={urgency_level})")
     except Exception as e:
         log.exception(f"Failed to save call log: {e}")
 
-def get_all_call_logs(limit=50):
+def get_all_call_logs(limit=50, clinic_id: str = None, mask_phone: bool = True):
     """Fetch call logs with clinical triage data and audio playback for admin view."""
     import json
     try:
         with get_db() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM call_logs ORDER BY id DESC LIMIT ?", (limit,))
+            if clinic_id:
+                cursor.execute("SELECT * FROM call_logs WHERE clinic_id = ? ORDER BY id DESC LIMIT ?", (clinic_id, limit))
+            else:
+                cursor.execute("SELECT * FROM call_logs ORDER BY id DESC LIMIT ?", (limit,))
             rows = []
             for r in cursor.fetchall():
                 d = dict(r)
+                if mask_phone:
+                    if d.get("phone"):
+                        p = d["phone"]
+                        if len(p) >= 10:
+                            d["phone"] = f"{p[:5]}***{p[-2:]}"
+                        else:
+                            d["phone"] = "***"
+                    
+                    if d.get("caller_name") and d.get("caller_name").lower() not in ("unknown", "anonymous"):
+                        name_parts = d["caller_name"].split()
+                        masked_name = []
+                        for part in name_parts:
+                            if len(part) > 1:
+                                masked_name.append(f"{part[0]}{'*' * (len(part) - 1)}")
+                            else:
+                                masked_name.append("*")
+                        d["caller_name"] = " ".join(masked_name)
+
                 try:
                     d["transcript"] = json.loads(d.get("transcript_json") or "[]")
                 except Exception:
@@ -476,6 +747,8 @@ def get_all_call_logs(limit=50):
                 d["urgency_level"] = d.get("urgency_level") or "Routine"
                 d["action_items"] = d.get("action_items") or "Review medical reports with doctor."
                 d["audio_url"] = d.get("audio_url") or f"/api/audio/memo/{d.get('session_id')}"
+                d["avg_snr"] = d.get("avg_snr", 0.0)
+                d["avg_erle"] = d.get("avg_erle", 0.0)
                 rows.append(d)
             return rows
     except Exception as e:
@@ -612,38 +885,59 @@ def cancel_appointment(phone: str, slot_time: str) -> dict:
         log.exception("Failed to cancel appointment")
         return {"ok": False, "error": "internal", "message": str(e)}
 
-def get_all_orders(limit=100):
+def get_all_orders(limit=100, clinic_id: str = None):
     """Fetch all subscription orders."""
     try:
         with get_db() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))
+            if clinic_id:
+                cursor.execute("SELECT * FROM orders WHERE clinic_id = ? ORDER BY id DESC LIMIT ?", (clinic_id, limit))
+            else:
+                cursor.execute("SELECT * FROM orders ORDER BY id DESC LIMIT ?", (limit,))
             return [dict(r) for r in cursor.fetchall()]
     except Exception as e:
         log.error(f"Failed to fetch orders: {e}")
         return []
 
-def get_admin_stats():
-    """Aggregate high-level metrics for Dr. Sharma's admin dashboard."""
+def get_admin_stats(clinic_id: str = None):
+    """Aggregate high-level metrics for admin dashboard."""
     try:
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM appointments")
-            total_appts = cursor.fetchone()[0]
+            
+            if clinic_id:
+                cursor.execute("SELECT COUNT(*) FROM appointments WHERE clinic_id = ?", (clinic_id,))
+                total_appts = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*) FROM appointments WHERE date(created_at) = date('now')")
-            today_appts = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM appointments WHERE clinic_id = ? AND date(created_at) = date('now')", (clinic_id,))
+                today_appts = cursor.fetchone()[0]
 
-            cursor.execute("SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM orders WHERE status = 'PAID'")
-            order_row = cursor.fetchone()
-            total_orders = order_row[0]
-            total_revenue = order_row[1]
+                cursor.execute("SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM orders WHERE clinic_id = ? AND status = 'PAID'", (clinic_id,))
+                order_row = cursor.fetchone()
+                total_orders = order_row[0]
+                total_revenue = order_row[1]
 
-            cursor.execute("SELECT COUNT(*), COALESCE(SUM(duration_seconds), 0) FROM call_logs")
-            call_row = cursor.fetchone()
-            total_calls = call_row[0]
-            total_call_seconds = call_row[1]
+                cursor.execute("SELECT COUNT(*), COALESCE(SUM(duration_seconds), 0) FROM call_logs WHERE clinic_id = ?", (clinic_id,))
+                call_row = cursor.fetchone()
+                total_calls = call_row[0]
+                total_call_seconds = call_row[1]
+            else:
+                cursor.execute("SELECT COUNT(*) FROM appointments")
+                total_appts = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM appointments WHERE date(created_at) = date('now')")
+                today_appts = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*), COALESCE(SUM(amount), 0) FROM orders WHERE status = 'PAID'")
+                order_row = cursor.fetchone()
+                total_orders = order_row[0]
+                total_revenue = order_row[1]
+
+                cursor.execute("SELECT COUNT(*), COALESCE(SUM(duration_seconds), 0) FROM call_logs")
+                call_row = cursor.fetchone()
+                total_calls = call_row[0]
+                total_call_seconds = call_row[1]
 
             return {
                 "total_appointments": total_appts,
@@ -670,9 +964,9 @@ def create_order(plan_id: str, plan_name: str, amount: int, doctor_name: str, cl
     order_id = f"ORD-SWK-{uuid.uuid4().hex[:8].upper()}"
     with get_db() as conn:
         conn.execute("""
-            INSERT INTO orders (order_id, plan_id, plan_name, amount, doctor_name, clinic_name, phone, email, city, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
-        """, (order_id, plan_id, plan_name, amount, doctor_name, clinic_name, phone, email, city))
+            INSERT INTO orders (order_id, plan_id, plan_name, amount, doctor_name, phone, email, city, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING')
+        """, (order_id, plan_id, plan_name, amount, doctor_name, phone, email, city))
         conn.commit()
     
     upi_id = os.environ.get("UPI_ID", "6387831138-2@ibl")
@@ -701,6 +995,90 @@ def create_order(plan_id: str, plan_name: str, amount: int, doctor_name: str, cl
         "payee_name": payee_name,
         "upi_link": upi_link,
     }
+
+def generate_invoice_pdf(order: dict[str, Any]) -> bytes:
+    """Generate a PDF invoice for a subscription order using reportlab."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import inch
+    from io import BytesIO
+    from datetime import datetime
+    
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    # Header
+    c.setFont("Helvetica-Bold", 24)
+    c.drawString(inch, height - inch, "TAX INVOICE")
+    
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(inch, height - 1.5*inch, "Swastik AI Solutions")
+    c.setFont("Helvetica", 10)
+    c.drawString(inch, height - 1.7*inch, "123 Tech Park, Bengaluru, India")
+    c.drawString(inch, height - 1.9*inch, "GSTIN: 29XXXXX0000X1Z5")
+    c.drawString(inch, height - 2.1*inch, "support@swastik.ai")
+    
+    # Bill To
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(width - 3.5*inch, height - 1.5*inch, "Billed To:")
+    c.setFont("Helvetica", 10)
+    c.drawString(width - 3.5*inch, height - 1.7*inch, order.get("clinic_name", "Clinic Name"))
+    c.drawString(width - 3.5*inch, height - 1.9*inch, order.get("doctor_name", "Doctor Name"))
+    if order.get("city"):
+        c.drawString(width - 3.5*inch, height - 2.1*inch, order.get("city"))
+    
+    # Invoice Details
+    c.setLineWidth(1)
+    c.line(inch, height - 2.5*inch, width - inch, height - 2.5*inch)
+    
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(inch, height - 2.8*inch, f"Invoice No: INV-{order.get('order_id', '0000')}")
+    c.drawString(inch, height - 3.0*inch, f"Date: {datetime.now().strftime('%d %B %Y')}")
+    c.drawString(inch, height - 3.2*inch, f"Payment Ref: {order.get('transaction_ref', 'N/A')}")
+    c.drawString(inch, height - 3.4*inch, f"Status: {order.get('status', 'PAID')}")
+    
+    c.line(inch, height - 3.7*inch, width - inch, height - 3.7*inch)
+    
+    # Items Header
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(inch, height - 4.0*inch, "Description")
+    c.drawString(width - 2*inch, height - 4.0*inch, "Amount (INR)")
+    
+    c.line(inch, height - 4.2*inch, width - inch, height - 4.2*inch)
+    
+    # Item Row
+    c.setFont("Helvetica", 10)
+    c.drawString(inch, height - 4.5*inch, f"Swastik AI Voice Agent - {order.get('plan_name', 'Pro')} Subscription")
+    
+    amt = float(order.get('amount', 0))
+    base_amt = amt / 1.18
+    tax_amt = amt - base_amt
+    
+    c.drawString(width - 2*inch, height - 4.5*inch, f"Rs. {base_amt:.2f}")
+    
+    # Totals
+    c.line(inch, height - 5.0*inch, width - inch, height - 5.0*inch)
+    c.drawString(width - 3.5*inch, height - 5.3*inch, "Subtotal:")
+    c.drawString(width - 2*inch, height - 5.3*inch, f"Rs. {base_amt:.2f}")
+    
+    c.drawString(width - 3.5*inch, height - 5.5*inch, "GST (18%):")
+    c.drawString(width - 2*inch, height - 5.5*inch, f"Rs. {tax_amt:.2f}")
+    
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(width - 3.5*inch, height - 5.9*inch, "Total Paid:")
+    c.drawString(width - 2*inch, height - 5.9*inch, f"Rs. {amt:.2f}")
+    
+    # Footer
+    c.setFont("Helvetica-Oblique", 8)
+    c.drawString(inch, inch, "This is a computer-generated invoice. No signature required.")
+    
+    c.showPage()
+    c.save()
+    
+    pdf_out = buffer.getvalue()
+    buffer.close()
+    return pdf_out
 
 def verify_order_payment(order_id: str, transaction_ref: str, payment_method: str = "UPI"):
     """Update order status to PAID once payment is submitted/verified."""
@@ -741,6 +1119,19 @@ TOOL_DECLARATIONS = [
             "type": "object",
             "properties": {},
         },
+    },
+    {
+        "name": "transfer_to_human",
+        "description": "Transfer the live call to a human receptionist or doctor. Use when the user explicitly requests to speak to a human or when dealing with highly complex non-emergency issues.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "reason": {
+                    "type": "string",
+                    "description": "Reason for the transfer",
+                }
+            }
+        }
     },
     {
         "name": "get_available_slots",
@@ -939,17 +1330,20 @@ def save_appointment(patient_name, slot_time, phone, age, gender, category, cons
             """, (patient_name, slot_time, phone, age, gender, category, consultation_mode))
             conn.commit()
             return cursor.lastrowid
-    except Exception as e:
+    except Exception:
         log.exception("Failed to persist appointment")
         return None
 
-def get_all_appointments(limit=100):
+def get_all_appointments(limit=100, clinic_id: str = None):
     """Fetch appointments for admin view."""
     try:
         with get_db() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM appointments ORDER BY id DESC LIMIT ?", (limit,))
+            if clinic_id:
+                cursor.execute("SELECT * FROM appointments WHERE clinic_id = ? ORDER BY id DESC LIMIT ?", (clinic_id, limit))
+            else:
+                cursor.execute("SELECT * FROM appointments ORDER BY id DESC LIMIT ?", (limit,))
             return [dict(row) for row in cursor.fetchall()]
     except Exception as e:
         log.error(f"Failed to fetch appointments: {e}")
@@ -1114,7 +1508,7 @@ def dispatch_tool(name: str, args: dict):
             "caller_context": ctx,
             "emergency_number": "112",
             "advised_action": "Call 112 / proceed to nearest emergency casualty",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         })
 
         escalation_data = {
@@ -1131,6 +1525,14 @@ def dispatch_tool(name: str, args: dict):
                 "speech_directive": "This sounds like an emergency. Please call 112 or go to the nearest casualty immediately. Do not wait for a clinic appointment.",
                 "emergency_number": "112",
             },
+        )
+
+    if name == "transfer_to_human":
+        reason = args.get("reason", "User requested human agent")
+        log.info(f"Warm transfer initiated. Reason: {reason}")
+        return (
+            {"action": "transfer_to_human", "data": {"reason": reason}},
+            {"result": "ok", "message": "Call transfer initiated. Please say 'Transferring you to the reception now' and stop talking."}
         )
 
     if name == "reschedule_appointment":

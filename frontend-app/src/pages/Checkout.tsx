@@ -16,6 +16,7 @@ import {
   Zap,
   ArrowRight,
   Clock,
+  CreditCard,
 } from 'lucide-react'
 
 interface PlanInfo {
@@ -154,7 +155,7 @@ export default function Checkout() {
   }
 
   // Handle Payment Verification
-  const handleVerifyPayment = async (method: 'UPI' | 'DEMO' = 'UPI') => {
+  const handleVerifyPayment = async (method: 'UPI' | 'DEMO' | 'RAZORPAY' = 'UPI', explicitRef?: string) => {
     if (!order) return
     if (method === 'UPI' && !transactionRef.trim()) {
       setError('Please enter the 12-digit UPI UTR / Transaction Reference number.')
@@ -165,7 +166,7 @@ export default function Checkout() {
     setError(null)
 
     try {
-      const ref = method === 'DEMO' ? `DEMO-${Date.now()}` : transactionRef.trim()
+      const ref = method === 'DEMO' ? `DEMO-${Date.now()}` : (explicitRef || transactionRef.trim())
       const res = await fetch('/api/checkout/verify-payment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -196,6 +197,47 @@ export default function Checkout() {
       setCopiedUpi(true)
       setTimeout(() => setCopiedUpi(false), 2000)
     }
+  }
+
+  const loadRazorpay = () => {
+    return new Promise((resolve) => {
+      const script = document.createElement('script')
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+      script.onload = () => resolve(true)
+      script.onerror = () => resolve(false)
+      document.body.appendChild(script)
+    })
+  }
+
+  const handleRazorpay = async () => {
+    if (!order) return
+    setVerifying(true)
+    const res = await loadRazorpay()
+    if (!res) {
+      setError('Razorpay SDK failed to load. Are you offline?')
+      setVerifying(false)
+      return
+    }
+    
+    const options = {
+      key: 'rzp_test_mock_key', // Mock testing key
+      amount: order.amount * 100, // in paise
+      currency: 'INR',
+      name: 'Swastik AI',
+      description: `Payment for ${order.plan_name}`,
+      handler: function (response: any) {
+        handleVerifyPayment('RAZORPAY', response.razorpay_payment_id)
+      },
+      prefill: {
+        name: formData.doctorName,
+        email: formData.email,
+        contact: formData.phone,
+      },
+      theme: { color: '#14C8B2' },
+    }
+    setVerifying(false)
+    const paymentObject = new (window as any).Razorpay(options)
+    paymentObject.open()
   }
 
   return (
@@ -611,6 +653,21 @@ export default function Checkout() {
                         </button>
                       </div>
                     </div>
+
+                    <div className="relative flex items-center py-2">
+                      <div className="flex-grow border-t border-white/10"></div>
+                      <span className="flex-shrink-0 mx-4 text-[#94A3B8] text-[10px] font-semibold uppercase">Or pay with Cards / Netbanking</span>
+                      <div className="flex-grow border-t border-white/10"></div>
+                    </div>
+
+                    <button
+                      onClick={handleRazorpay}
+                      disabled={verifying}
+                      className="w-full py-3.5 rounded-xl border border-[rgba(20,200,178,0.4)] bg-transparent hover:bg-[rgba(20,200,178,0.08)] text-[#14C8B2] font-bold text-xs shadow-[0_0_15px_rgba(20,200,178,0.1)] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      <CreditCard className="w-4 h-4" />
+                      <span>Pay Securely via Razorpay</span>
+                    </button>
 
                     {/* Instant Demo/Test Option */}
                     <div className="pt-4 border-t border-white/[0.08] flex items-center justify-between">

@@ -5,17 +5,31 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dr. Sharma Clinic · AI Voice Receptionist</title>
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=3.0">
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=3.0">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png?v=3.0">
-  <link rel="shortcut icon" href="/favicon.ico?v=3.0">
-  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=3.0">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=5.0">
+  <link rel="icon" type="image/png" sizes="32x32" href="./favicon.png?v=5.0">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png?v=5.0">
+  <link rel="shortcut icon" href="./favicon.ico?v=5.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=5.0">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
     href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap"
     rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    function dismissCard(e, id) {
+      if (e) {
+        if (e.stopPropagation) e.stopPropagation();
+        if (e.preventDefault) e.preventDefault();
+      }
+      var card = document.getElementById(id);
+      if (card) {
+        card.style.setProperty('display', 'none', 'important');
+        card.classList.add('dismissed');
+        card.classList.remove('visible');
+      }
+    }
+  </script>
   <style>
     :root {
       --bg-dark: #04070C;
@@ -31,6 +45,10 @@
       --text-muted: #475569;
       --border-glass: rgba(255, 255, 255, 0.09);
       --card-bg: rgba(8, 14, 23, 0.85);
+      --radius-xs: 2px;
+      --radius-sm: 8px;
+      --radius-lg: 14px;
+      --radius-pill: 9999px;
     }
 
     * {
@@ -180,7 +198,7 @@
       color: #64748B;
       background: rgba(255, 255, 255, 0.03);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
       padding: 4px 10px;
       text-transform: uppercase;
       user-select: none;
@@ -204,7 +222,7 @@
       overflow: hidden;
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
+      border-radius: var(--radius-lg);
       padding: 10px 20px;
       width: 100%;
       pointer-events: auto;
@@ -248,7 +266,7 @@
       height: 7px;
       background: #10B981;
       box-shadow: 0 0 10px #10B981, 0 0 20px #10B981;
-      border-radius: 1px;
+      border-radius: var(--radius-xs);
       animation: blink-dot 2s infinite;
     }
 
@@ -286,58 +304,20 @@
       background: rgba(255, 255, 255, 0.04);
       border: 1px solid rgba(255, 255, 255, 0.08);
       padding: 4px 12px;
-      border-radius: 999px;
-      font-size: 9px;
-      letter-spacing: 0.15em;
+      border-radius: var(--radius-pill);
+      font-size: 11px;
+      letter-spacing: 0.08em;
       font-family: 'JetBrains Mono', monospace;
       color: #94A3B8;
-      text-transform: uppercase;
-    }
-
-    /* JARVIS Hologram Theme Selector */
-    .theme-selector-group {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 999px;
-      padding: 2px 3px;
-      pointer-events: auto;
-    }
-
-    .theme-btn {
-      background: transparent;
-      border: none;
-      color: #94A3B8;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 8.5px;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      padding: 3px 8px;
-      border-radius: 999px;
-      cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .theme-btn:hover {
-      color: #F8FAFC;
-      background: rgba(255, 255, 255, 0.08);
-    }
-
-    .theme-btn.active {
-      color: #04070C;
-      background: linear-gradient(135deg, #F5A623, #FFD54F);
-      box-shadow: 0 0 10px rgba(245, 166, 35, 0.45);
-      font-weight: 700;
+      font-variant-numeric: tabular-nums;
     }
 
     .hud-brand {
-      font-size: 11px;
-      letter-spacing: 0.2em;
+      font-size: 12px;
+      letter-spacing: 0.12em;
       color: #CBD5E1;
-      text-transform: uppercase;
-      font-weight: 700;
+      font-weight: 600;
+      line-height: 1.4;
       font-family: 'JetBrains Mono', monospace;
     }
 
@@ -359,52 +339,53 @@
       align-items: center;
       gap: 8px;
       font-size: 11px;
-      letter-spacing: 0.18em;
-      font-weight: 700;
-      color: #F8FAFC;
+      letter-spacing: 0.16em;
+      font-weight: 600;
+      color: #CBD5E1;
       text-transform: uppercase;
       white-space: nowrap;
       font-family: 'JetBrains Mono', monospace;
-      background: rgba(245, 166, 35, 0.08);
-      border: 1px solid rgba(245, 166, 35, 0.25);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       padding: 4px 12px;
-      border-radius: 4px;
-      box-shadow: 0 0 15px rgba(245, 166, 35, 0.15);
+      border-radius: var(--radius-sm);
+      box-shadow: none;
     }
 
     .stage-badge::before {
       content: '■';
-      color: #F5A623;
+      color: #94A3B8;
       font-size: 8px;
-      filter: drop-shadow(0 0 6px #F5A623);
+      filter: none;
     }
 
     .stage-sub {
-      font-size: 9px;
-      letter-spacing: 0.2em;
-      color: var(--text-muted);
+      font-size: 10.5px;
+      letter-spacing: 0.18em;
+      font-weight: 600;
+      color: #94A3B8;
       text-transform: uppercase;
       padding-left: 12px;
       font-family: 'JetBrains Mono', monospace;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
     }
 
     /* Orb Labels */
     .orb-labels-container {
       position: absolute;
+      inset: 0;
       width: 100%;
-      top: 67%;
-      left: 0;
-      display: flex;
-      justify-content: space-around;
+      height: 100%;
       pointer-events: none;
+      z-index: 5;
     }
 
     .orb-label-block {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 4px;
-      width: 220px;
+      gap: 6px;
+      width: 240px;
       text-align: center;
     }
 
@@ -417,20 +398,41 @@
     }
 
     .orb-sub {
-      font-size: 9px;
-      letter-spacing: 0.28em;
-      color: #475569;
+      font-size: 11px;
+      letter-spacing: 0.24em;
+      font-weight: 700;
+      color: #94A3B8;
       text-transform: uppercase;
       font-family: 'JetBrains Mono', monospace;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9);
     }
 
     .orb-main {
-      font-size: 11px;
-      letter-spacing: 0.22em;
-      font-weight: 700;
-      color: #CBD5E1;
+      font-size: 13px;
+      letter-spacing: 0.2em;
+      font-weight: 800;
+      color: #FFFFFF;
       text-transform: uppercase;
       font-family: 'JetBrains Mono', monospace;
+      padding: 5px 14px;
+      background: rgba(4, 7, 12, 0.8);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+      display: inline-block;
+    }
+
+    .orb-label-block.patient .orb-main {
+      border-color: rgba(245, 166, 35, 0.45);
+      box-shadow: 0 0 18px rgba(245, 166, 35, 0.25), 0 4px 20px rgba(0, 0, 0, 0.8);
+    }
+
+    .orb-label-block.swastik .orb-main {
+      border-color: rgba(20, 200, 178, 0.45);
+      box-shadow: 0 0 18px rgba(20, 200, 178, 0.3), 0 4px 20px rgba(0, 0, 0, 0.8);
     }
 
     /* Right Side Sliding HUD Cards */
@@ -445,10 +447,11 @@
       overflow-x: hidden;
       display: flex;
       flex-direction: column;
+      align-items: stretch;
       gap: 14px;
       pointer-events: none;
       z-index: 15;
-      padding: 6px;
+      padding: 0;
       perspective: 1200px;
       transform-style: preserve-3d;
     }
@@ -459,12 +462,12 @@
 
     .cards-overlay::-webkit-scrollbar-track {
       background: rgba(0, 0, 0, 0.2);
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
     }
 
     .cards-overlay::-webkit-scrollbar-thumb {
       background: rgba(20, 200, 178, 0.3);
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
     }
 
     .cards-overlay::-webkit-scrollbar-thumb:hover {
@@ -472,10 +475,13 @@
     }
 
     .hud-card {
+      width: 100%;
+      box-sizing: border-box;
+      align-self: stretch;
       background: var(--card-bg);
       background-image: radial-gradient(circle 280px at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(255, 255, 255, 0.07), transparent 75%);
       border: 1px solid var(--border-glass);
-      border-radius: 14px;
+      border-radius: var(--radius-lg);
       padding: 16px 20px;
       backdrop-filter: blur(24px);
       -webkit-backdrop-filter: blur(24px);
@@ -558,6 +564,50 @@
       margin-bottom: 12px;
     }
 
+    .card-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-close-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: #94A3B8;
+      cursor: pointer !important;
+      pointer-events: auto !important;
+      z-index: 9999 !important;
+      position: relative !important;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      flex-shrink: 0;
+      line-height: 1;
+    }
+
+    .card-close-btn:hover {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: rgba(239, 68, 68, 0.7);
+      color: #EF4444;
+      transform: scale(1.15);
+      box-shadow: 0 0 12px rgba(239, 68, 68, 0.45);
+    }
+
+    .card-close-btn:active {
+      transform: scale(0.92);
+    }
+
+    .hud-card.dismissed {
+      display: none !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
     .gcal-brand {
       display: flex;
       align-items: center;
@@ -578,6 +628,34 @@
       letter-spacing: 0.1em;
       color: #64748B;
       font-family: 'JetBrains Mono', monospace;
+    }
+
+    .cal-sync-pill {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 3px 8px;
+      border-radius: var(--radius-pill);
+      background: rgba(20, 200, 178, 0.12);
+      border: 1px solid rgba(20, 200, 178, 0.35);
+      color: #14C8B2;
+      margin-left: auto;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .cal-sync-pill.is-writing {
+      background: rgba(245, 166, 35, 0.2);
+      border-color: rgba(245, 166, 35, 0.7);
+      color: #F5A623;
+      box-shadow: 0 0 14px rgba(245, 166, 35, 0.4);
+      animation: pulse-sync 1.2s infinite ease-in-out;
+    }
+
+    @keyframes pulse-sync {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.75; transform: scale(1.04); }
     }
 
     .doc-name {
@@ -610,10 +688,16 @@
       padding: 8px 12px;
       background: rgba(255, 255, 255, 0.02);
       border: 1px solid rgba(255, 255, 255, 0.05);
-      border-radius: 8px;
-      font-size: 11px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
       font-family: 'JetBrains Mono', monospace;
       transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .slot-row > span:first-child {
+      font-size: 13px;
+      font-weight: 500;
+      color: #F1F5F9;
     }
 
     .slot-row:hover {
@@ -635,104 +719,148 @@
     }
 
     .badge-free {
-      font-size: 9px;
-      color: #64748B;
-      letter-spacing: 0.1em;
+      font-size: 11px;
+      color: #94A3B8;
+      letter-spacing: 0.08em;
       font-weight: 600;
     }
 
     .badge-booked {
-      font-size: 9px;
+      font-size: 11px;
       color: #14C8B2;
       font-weight: 700;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.08em;
     }
 
     .calendar-footer-note {
-      font-size: 9px;
-      color: #64748B;
-      font-style: italic;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11.5px;
+      font-weight: 500;
+      color: #94A3B8;
+      font-style: normal;
       margin-top: 12px;
-      text-align: right;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
     }
 
-    /* WhatsApp Notification Card */
-    .wa-top {
+    .calendar-footer-note::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #10B981;
+      box-shadow: 0 0 6px #10B981;
+      flex-shrink: 0;
+    }
+
+    /* WhatsApp Platform Card */
+    .wa-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 8px;
+      margin-bottom: 12px;
     }
 
-    .wa-title {
-      font-size: 11px;
-      font-weight: 700;
-      color: #25D366;
+    .wa-header-brand {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #E2E8F0;
     }
 
-    .wa-time {
-      font-size: 9px;
-      color: #64748B;
+    .wa-brand-icon {
+      width: 15px;
+      height: 15px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .wa-status-badge {
+      font-size: 9.5px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: #10B981;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
       font-family: 'JetBrains Mono', monospace;
     }
 
-    .wa-sender {
-      font-size: 11px;
-      font-weight: 800;
+    .wa-bubble {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+
+    .wa-bubble-label {
+      font-size: 9.5px;
       letter-spacing: 0.14em;
-      color: #E2E8F0;
-      margin-bottom: 6px;
       text-transform: uppercase;
+      color: #64748B;
+      font-weight: 600;
+      margin-bottom: 5px;
+      font-family: 'JetBrains Mono', monospace;
     }
 
     .wa-msg {
-      font-size: 11px;
+      font-size: 12px;
       line-height: 1.55;
-      color: #CBD5E1;
+      color: #E2E8F0;
     }
 
-    .wa-btn-link {
-      display: inline-flex;
+    .wa-actions-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .wa-action-btn {
+      display: flex;
       align-items: center;
-      gap: 6px;
-      margin-top: 10px;
-      padding: 6px 14px;
-      background: rgba(37, 211, 102, 0.12);
-      border: 1px solid rgba(37, 211, 102, 0.4);
-      color: #25D366;
-      border-radius: 6px;
-      font-size: 10px;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: var(--radius-sm);
       text-decoration: none;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      transition: all 0.2s;
-    }
-
-    .wa-btn-link:hover {
-      color: #38BDF8;
+      min-height: 38px;
+      transition: all 0.2s ease;
+      letter-spacing: 0.02em;
     }
 
     .wa-btn-send {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      gap: 8px;
-      background: #25D366;
-      color: #fff;
-      text-decoration: none;
-      font-size: 13px;
-      font-weight: 600;
-      padding: 10px 16px;
-      border-radius: 6px;
-      margin-top: 10px;
-      transition: background 0.2s;
+      background: rgba(37, 211, 102, 0.14);
+      border: 1px solid rgba(37, 211, 102, 0.45);
+      color: #25D366;
     }
 
     .wa-btn-send:hover {
-      background: #20BA56;
+      background: rgba(37, 211, 102, 0.25);
+      border-color: rgba(37, 211, 102, 0.7);
+      color: #FFFFFF;
+    }
+
+    .wa-btn-link {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #94A3B8;
+    }
+
+    .wa-btn-link:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.25);
+      color: #F8FAFC;
     }
 
     /* Subtitle Captions Area (Lower Third) */
@@ -743,7 +871,7 @@
       gap: 4px;
       padding: 3px 8px;
       background: rgba(20, 200, 178, 0.12);
-      border-radius: 999px;
+      border-radius: var(--radius-pill);
       border: 1px solid rgba(20, 200, 178, 0.35);
     }
 
@@ -796,7 +924,7 @@
       overflow: hidden;
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 14px;
+      border-radius: var(--radius-lg);
       padding: 12px 18px;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
       transition: border-color 0.3s ease, box-shadow 0.3s ease;
@@ -841,7 +969,7 @@
     .wave-bar {
       width: 2px;
       background: #14C8B2;
-      border-radius: 1px;
+      border-radius: var(--radius-xs);
       height: 3px;
       transition: height 0.1s ease;
     }
@@ -893,18 +1021,22 @@
     .call-btn-container {
       pointer-events: auto;
       flex-shrink: 0;
+      width: 340px;
+      display: flex;
     }
 
     .call-btn {
       pointer-events: auto;
-      background: rgba(20, 200, 178, 0.12);
-      border: 1px solid rgba(20, 200, 178, 0.4);
-      color: #14C8B2;
-      padding: 13px 28px;
-      border-radius: 999px;
-      font-size: 11px;
+      width: 100%;
+      justify-content: center;
+      background: #14C8B2;
+      border: 1px solid #14C8B2;
+      color: #04070C;
+      padding: 14px 28px;
+      border-radius: var(--radius-pill);
+      font-size: 13px;
       font-weight: 800;
-      letter-spacing: 0.2em;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
       cursor: pointer;
       backdrop-filter: blur(12px);
@@ -913,7 +1045,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      box-shadow: 0 4px 25px rgba(20, 200, 178, 0.25);
+      box-shadow: 0 0 30px rgba(20, 200, 178, 0.5);
       font-family: 'JetBrains Mono', monospace;
       position: relative;
       animation: cta-pulse 3s infinite ease-in-out;
@@ -923,20 +1055,20 @@
 
       0%,
       100% {
-        box-shadow: 0 4px 20px rgba(20, 200, 178, 0.25), inset 0 0 10px rgba(20, 200, 178, 0.1);
-        border-color: rgba(20, 200, 178, 0.35);
+        box-shadow: 0 0 20px rgba(20, 200, 178, 0.35);
+        transform: scale(1);
       }
 
       50% {
-        box-shadow: 0 4px 35px rgba(20, 200, 178, 0.55), inset 0 0 18px rgba(20, 200, 178, 0.25);
-        border-color: rgba(20, 200, 178, 0.7);
+        box-shadow: 0 0 35px rgba(20, 200, 178, 0.65);
+        transform: scale(1.02);
       }
     }
 
     .call-btn:hover {
-      background: rgba(20, 200, 178, 0.25);
-      box-shadow: 0 6px 36px rgba(20, 200, 178, 0.6);
-      transform: translateY(-2px) scale(1.02);
+      background: #1ae8ce;
+      box-shadow: 0 0 38px rgba(20, 200, 178, 0.75);
+      transform: translateY(-2px) scale(1.03);
     }
 
     .call-btn.in-call {
@@ -984,6 +1116,10 @@
         max-height: calc(100dvh - 200px);
       }
 
+      .call-btn-container {
+        width: 290px;
+      }
+
       .subtitles-container {
         max-width: 540px;
       }
@@ -1005,7 +1141,7 @@
 
       .hud-header {
         padding: 8px 12px;
-        border-radius: 10px;
+        border-radius: var(--radius-lg);
       }
 
       .lang-tag,
@@ -1037,7 +1173,7 @@
         width: auto;
         max-height: calc(100dvh - 230px);
         transform: none;
-        padding: 4px;
+        padding: 0;
         gap: 12px;
       }
 
@@ -1060,7 +1196,7 @@
         max-width: 100%;
         width: 100%;
         padding: 10px 14px;
-        border-radius: 12px;
+        border-radius: var(--radius-lg);
         gap: 4px;
       }
 
@@ -1087,7 +1223,7 @@
         justify-content: center;
         padding: 14px 20px;
         font-size: 12px;
-        border-radius: 999px;
+        border-radius: var(--radius-pill);
       }
     }
 
@@ -1138,7 +1274,7 @@
     <header class="hud-header">
       <div class="status-block">
         <div class="clinic-avatar-badge">
-          <img src="/swastik-brand-logo.png?v=3.0" alt="Dr. Sharma Clinic" class="clinic-avatar-img">
+          <img src="./swastik-brand-logo.png?v=5.0" alt="Dr. Sharma Clinic" class="clinic-avatar-img">
           <span class="clinic-status-ring"></span>
         </div>
         <div class="conn-status">
@@ -1146,16 +1282,9 @@
           <span id="connLabel">CONNECTED</span>
           <span id="callTimer" style="display:none; color: #10B981; margin-left: 8px;">00:00</span>
         </div>
-        <div class="lang-tag">HINDI + ENGLISH // MULTIMODAL V3.1</div>
+        <div class="lang-tag">Hindi + English · Live Voice</div>
       </div>
       <div class="hud-brand-container">
-        <div class="theme-selector-group desktop-telemetry">
-          <button id="themeDualBtn" class="theme-btn active"
-            title="Dual Hologram Mode (JARVIS Gold + Cyan Plasma)">DUAL</button>
-          <button id="themeJarvisBtn" class="theme-btn" title="Tony Stark JARVIS Golden Hologram (Iron Man)">JARVIS
-            GOLD</button>
-          <button id="themeCyanBtn" class="theme-btn" title="Electric Cyan Plasma Hologram">CYAN PLASMA</button>
-        </div>
         <span id="dragHint" class="drag-hint-pill desktop-telemetry">
           <svg style="width:11px;height:11px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 2v20M2 12h20M7 7l10 10M17 7 7 17" />
@@ -1163,8 +1292,8 @@
           DRAG 3D SPHERES
         </span>
         <span id="liveClock" class="telemetry-pill">00:00:00</span>
-        <span class="telemetry-pill desktop-telemetry">VOICE: 24kHz PCM</span>
-        <span class="hud-brand">DR. SHARMA CLINIC · SWASTIK AI</span>
+        <span class="telemetry-pill desktop-telemetry" title="Sample Rate: 24kHz PCM duplex audio" aria-label="Audio Quality: High Definition">HD Audio</span>
+        <span class="hud-brand">Dr. Sharma Clinic · Swastik AI</span>
       </div>
     </header>
 
@@ -1202,7 +1331,15 @@
               </svg>
               Google Calendar
             </div>
-            <span class="gcal-tag">Tomorrow</span>
+            <div class="card-header-actions">
+              <span id="calLiveBadge" class="cal-sync-pill" aria-live="polite">● Live Sync</span>
+              <button id="closeCalCardBtn" class="card-close-btn" type="button" onclick="dismissCard(event, 'calendarCard')" aria-label="Close Calendar Card" title="Close">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
           </div>
           <div class="doc-name">Dr. A. K. Sharma</div>
           <div class="doc-role">HOMEOPATHY CONSULTANT</div>
@@ -1230,36 +1367,56 @@
             <span class="badge-free">FREE</span>
           </div>
         </div>
-        <div class="calendar-footer-note">Written to the doctor's real calendar – not a copy</div>
+        <div class="calendar-footer-note">Verified: Written directly to Dr. Sharma's Google Calendar</div>
       </div>
 
       <!-- WhatsApp Confirmation Card -->
       <div id="waCard" class="hud-card">
         <div class="border-beam"></div>
         <div class="card-depth-1">
-          <div class="wa-top">
-            <div class="wa-title">
-              <span>● WhatsApp</span>
+          <div class="wa-header">
+            <div class="wa-header-brand">
+              <svg class="wa-brand-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#25D366"
+                  d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
+              </svg>
+              <span>WhatsApp Confirmation</span>
             </div>
-            <span class="wa-time">now</span>
+            <div class="card-header-actions">
+              <span class="wa-status-badge">Automated Dispatch</span>
+              <button id="closeWaCardBtn" class="card-close-btn" type="button" onclick="dismissCard(event, 'waCard')" aria-label="Close WhatsApp Card" title="Close">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
           </div>
-          <div class="wa-sender">SWASTIK AI</div>
-          <div id="waText" class="wa-msg">
-            Ramana — your appointment with Dr. Sharma is confirmed for tomorrow at 11:00 AM. Consultation fee ₹499.
+          <div class="wa-bubble">
+            <div class="wa-bubble-label">Message Preview</div>
+            <div id="waText" class="wa-msg">
+              Ramana — your appointment with Dr. Sharma is confirmed for tomorrow at 11:00 AM. Consultation fee ₹499.
+            </div>
           </div>
         </div>
-        <div class="card-depth-2">
-          <a id="waFormLink" href="#" target="_blank" rel="noopener noreferrer"
-            aria-label="Open consultation form and upload receipt" class="wa-btn-link">
-            Open Consultation Form & Upload Receipt →
-          </a>
+        <div class="card-depth-2 wa-actions-group">
           <a id="waSendBtn" href="#" target="_blank" rel="noopener noreferrer"
-            aria-label="Send WhatsApp confirmation now" class="wa-btn-send">
-            <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24">
+            aria-label="Send WhatsApp confirmation now" class="wa-action-btn wa-btn-send">
+            <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="currentColor"
                 d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51a12.8 12.8 0 0 0-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
             </svg>
-            Send WhatsApp Now
+            <span>Send WhatsApp Confirmation</span>
+          </a>
+          <a id="waFormLink" href="#" target="_blank" rel="noopener noreferrer"
+            aria-label="Open consultation form and upload receipt" class="wa-action-btn wa-btn-link">
+            <svg style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+            <span>Open Consultation Form</span>
           </a>
         </div>
       </div>
@@ -1409,7 +1566,7 @@
   </script>
 
   <audio id="audioOut"></audio>
-  <script src="/main.js?v=2.5"></script>
+  <script src="./main.js?v=4.0"></script>
 </body>
 
 </html>

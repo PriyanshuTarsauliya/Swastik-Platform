@@ -47,8 +47,6 @@
   --animate-fade-in: fade-in 0.5s ease-out;
   --animate-scale-in: scale-in 0.3s ease-out;
   --animate-border-beam: border-beam-anim var(--duration, 12s) infinite linear;
-  --animate-marquee: marquee var(--duration, 35s) linear infinite;
-  --animate-marquee-vertical: marquee-vertical var(--duration, 35s) linear infinite;
 }
 
 /* ── Keyframes ── */
@@ -87,30 +85,6 @@
   to { opacity: 1; transform: scale(1); }
 }
 
-@keyframes meteor {
-  0% {
-    transform: rotate(215deg) translateX(0);
-    opacity: 1;
-  }
-  70% {
-    opacity: 1;
-  }
-  100% {
-    transform: rotate(215deg) translateX(-600px);
-    opacity: 0;
-  }
-}
-
-@keyframes marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(calc(-100% - var(--gap, 1rem))); }
-}
-
-@keyframes marquee-vertical {
-  from { transform: translateY(0); }
-  to { transform: translateY(calc(-100% - var(--gap, 1rem))); }
-}
-
 @keyframes shimmer-spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
@@ -121,18 +95,6 @@
 }
 
 /* ── Inspira UI Animation Utilities ── */
-.animate-meteor {
-  animation: meteor 6s linear infinite;
-}
-
-.animate-marquee {
-  animation: marquee var(--duration, 35s) linear infinite;
-}
-
-.animate-marquee-reverse {
-  animation: marquee var(--duration, 35s) linear infinite reverse;
-}
-
 .animate-shimmer-spin {
   animation: shimmer-spin var(--speed, 3s) linear infinite;
 }
@@ -170,7 +132,6 @@ body {
 
 /* ── Glassmorphism Utilities ── */
 .glass {
-  background-color: #080e17;
   background: var(--color-background-card);
   backdrop-filter: blur(20px) saturate(1.8);
   -webkit-backdrop-filter: blur(20px) saturate(1.8);

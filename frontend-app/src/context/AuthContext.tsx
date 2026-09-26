@@ -6,8 +6,10 @@ export interface User {
   email: string
   role: string
   clinic_name: string
+  clinic_id?: string
   phone: string
   avatar_url?: string
+  is_verified: number
 }
 
 interface AuthContextType {

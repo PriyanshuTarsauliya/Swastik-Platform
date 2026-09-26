@@ -1,7 +1,9 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { CalendarCheck, PhoneForwarded, HeartPulse, Workflow, CheckCircle2 } from 'lucide-react'
 import BorderBeam from './inspira/BorderBeam'
-import { cn } from '../lib/utils'
+import AnimeHorizontalScroll from './inspira/AnimeHorizontalScroll'
+import AnimeSplitText from './inspira/AnimeSplitText'
+import AnimeScrollReveal from './inspira/AnimeScrollReveal'
 
 interface UseCase {
   id: string
@@ -119,152 +121,96 @@ const USE_CASES: UseCase[] = [
   },
 ]
 
-export const UseCasesSection: React.FC = () => {
-  const [activeUseCaseId, setActiveUseCaseId] = useState<string>(USE_CASES[0].id)
-  const activeUseCase = USE_CASES.find((u) => u.id === activeUseCaseId) || USE_CASES[0]
-  const ActiveIcon = activeUseCase.icon
-
+const UseCaseCard = ({ uc }: { uc: UseCase }) => {
+  const ActiveIcon = uc.icon;
   return (
-    <section id="use-cases" className="relative py-24 px-6 bg-[rgba(8,14,23,0.7)]">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-16">
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full border border-[rgba(20,200,178,0.3)] bg-[rgba(20,200,178,0.1)] text-xs font-semibold text-[#14c8b2] mb-4">
-            <Workflow className="w-3.5 h-3.5" /> Use-Case Driven Architecture
-          </span>
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight mb-4">
-            Designed for Every Critical Touchpoint with Swastik AI
-          </h2>
-          <p className="text-[#94a3b8] max-w-xl mx-auto text-base">
-            From initial discovery to post-consultation follow-up, explore how Swastik AI elevates the patient experience.
+    <div className="w-[85vw] max-w-[800px] shrink-0 h-full relative rounded-3xl border border-[rgba(20,200,178,0.3)] bg-[rgba(8,14,23,0.95)] p-8 md:p-12 shadow-[0_20px_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
+      <BorderBeam size={260} duration={8} colorFrom="#14c8b2" colorTo="#00e5ff" borderWidth={2} />
+
+      <div className="relative z-10 flex flex-col h-full gap-10">
+        <div className="flex-1 space-y-6">
+          <div className="flex items-center gap-3">
+            <span className="rounded-full border border-[rgba(20,200,178,0.4)] bg-[rgba(20,200,178,0.15)] px-3 py-1 text-xs font-semibold text-[#14c8b2]">
+              {uc.badge}
+            </span>
+            <span className="text-xs text-[#94a3b8] font-medium">{uc.category}</span>
+          </div>
+
+          <h3 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight">
+            {uc.headline}
+          </h3>
+
+          <p className="text-sm text-[#94a3b8] leading-relaxed">
+            {uc.description}
           </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            {uc.bullets.map((b, idx) => (
+              <div key={idx} className="flex items-start gap-2.5">
+                <CheckCircle2 className="h-4 w-4 text-[#14c8b2] shrink-0 mt-0.5" />
+                <span className="text-xs text-[#f8fafc]">{b}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Use Case Tabs */}
-        <div role="tablist" aria-label="Clinical touchpoints" className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
-          {USE_CASES.map((uc) => {
-            const isSelected = uc.id === activeUseCaseId
-            const Icon = uc.icon
-            return (
-              <button
-                key={uc.id}
-                role="tab"
-                aria-selected={isSelected}
-                aria-controls="use-case-details-panel"
-                onClick={() => setActiveUseCaseId(uc.id)}
-                className={cn(
-                  'relative flex items-center gap-3 rounded-2xl p-4 text-left transition-all cursor-pointer border',
-                  isSelected
-                    ? 'border-[#14c8b2] bg-[rgba(20,200,178,0.15)] shadow-[0_0_20px_rgba(20,200,178,0.25)]'
-                    : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 text-[#94a3b8]'
-                )}
-              >
-                <div
-                  className={cn(
-                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-colors',
-                    isSelected ? 'bg-[#14c8b2] text-[#04070c]' : 'bg-white/10 text-white'
-                  )}
-                >
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div>
-                  <span className={cn('block text-xs font-bold', isSelected ? 'text-white' : 'text-slate-300')}>
-                    {uc.title}
-                  </span>
-                  <span className="text-xs text-[#94a3b8]">{uc.category}</span>
-                </div>
-                {/* Active tab caret indicator pointing to content below */}
-                {isSelected && (
-                  <div className="hidden md:block absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-4 h-4 rotate-45 bg-[#080e17] border-b border-r border-[#14c8b2] z-20" />
-                )}
-              </button>
-            )
-          })}
-        </div>
+        <div className="rounded-2xl border border-white/10 bg-[rgba(4,7,12,0.85)] p-6 space-y-4 shadow-xl">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <span className="text-xs font-bold text-white flex items-center gap-1.5">
+              <ActiveIcon className="h-4 w-4 text-[#14c8b2]" /> Live Conversation Flow
+            </span>
+            <span className="flex items-center gap-1 text-[10px] text-[#22c55e] font-mono">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e] animate-pulse" /> Active Call
+            </span>
+          </div>
 
-        {/* Active Use Case Deep Dive Card */}
-        <div id="use-case-details-panel" role="tabpanel" className="relative rounded-3xl border border-[rgba(20,200,178,0.3)] bg-[rgba(8,14,23,0.95)] p-8 md:p-12 shadow-[0_20px_60px_rgba(0,0,0,0.8)] backdrop-blur-2xl">
-          <BorderBeam size={260} duration={8} colorFrom="#14c8b2" colorTo="#00e5ff" borderWidth={2} />
+          <div className="rounded-xl rounded-tl-none border border-white/10 bg-white/5 p-3.5 text-xs text-white">
+            <span className="text-[10px] text-[#94a3b8] block font-medium mb-1">Incoming Caller</span>
+            &quot;{uc.simulatedCall.caller}&quot;
+          </div>
 
-          <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-            {/* Left Info Column */}
-            <div className="lg:col-span-7 space-y-6">
-              <div className="flex items-center gap-3">
-                <span className="rounded-full border border-[rgba(20,200,178,0.4)] bg-[rgba(20,200,178,0.15)] px-3 py-1 text-xs font-semibold text-[#14c8b2]">
-                  {activeUseCase.badge}
-                </span>
-                <span className="text-xs text-[#94a3b8] font-medium">{activeUseCase.category}</span>
-              </div>
+          <div className="rounded-xl rounded-tl-none border border-[rgba(20,200,178,0.3)] bg-[rgba(20,200,178,0.1)] p-4 text-xs text-[#f8fafc]">
+            <span className="text-[10px] text-[#14c8b2] block font-semibold mb-1">Swastik Voice AI</span>
+            &quot;{uc.simulatedCall.ai}&quot;
 
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-white leading-tight">
-                {activeUseCase.headline}
-              </h3>
-
-              <p className="text-sm text-[#94a3b8] leading-relaxed">
-                {activeUseCase.description}
-              </p>
-
-              {/* Bullet points */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                {activeUseCase.bullets.map((b, idx) => (
-                  <div key={idx} className="flex items-start gap-2.5">
-                    <CheckCircle2 className="h-4 w-4 text-[#14c8b2] shrink-0 mt-0.5" />
-                    <span className="text-xs text-[#f8fafc]">{b}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Metric stats row */}
-              <div className="grid grid-cols-3 gap-4 border-t border-white/10 pt-6">
-                {activeUseCase.metrics.map((m, idx) => (
-                  <div key={idx}>
-                    <span className="text-2xl sm:text-3xl font-black text-white block">{m.value}</span>
-                    <span className="text-[11px] text-[#94a3b8]">{m.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Right Simulated Audio Dialogue Card */}
-            <div className="lg:col-span-5">
-              <div className="rounded-2xl border border-white/10 bg-[rgba(4,7,12,0.85)] p-6 space-y-4 shadow-xl">
-                <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <ActiveIcon className="h-4 w-4 text-[#14c8b2]" /> Live Conversation Flow
-                  </span>
-                  <span className="flex items-center gap-1 text-[10px] text-[#22c55e] font-mono">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e] animate-pulse" /> Active Call
-                  </span>
-                </div>
-
-                {/* Caller Message */}
-                <div className="rounded-xl rounded-tl-none border border-white/10 bg-white/5 p-3.5 text-xs text-white">
-                  <span className="text-[10px] text-[#94a3b8] block font-medium mb-1">Incoming Caller</span>
-                  &quot;{activeUseCase.simulatedCall.caller}&quot;
-                </div>
-
-                {/* AI Response */}
-                <div className="rounded-xl rounded-tl-none border border-[rgba(20,200,178,0.3)] bg-[rgba(20,200,178,0.1)] p-4 text-xs text-[#f8fafc]">
-                  <span className="text-[10px] text-[#14c8b2] block font-semibold mb-1">Swastik Voice AI</span>
-                  &quot;{activeUseCase.simulatedCall.ai}&quot;
-
-                  <div className="mt-3 flex items-center gap-2 rounded-lg border border-[rgba(245,166,35,0.3)] bg-[rgba(245,166,35,0.1)] px-2.5 py-1 text-[11px] font-semibold text-[#f5a623]">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    <span>Auto-Action: {activeUseCase.simulatedCall.actionTag}</span>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex items-center justify-between text-[11px] text-[#94a3b8]">
-                  <span>Latency: <strong className="text-[#00e5ff]">340ms</strong></span>
-                  <span>Human Hand-off: <strong className="text-[#22c55e]">Ready</strong></span>
-                </div>
-              </div>
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-[rgba(245,166,35,0.3)] bg-[rgba(245,166,35,0.1)] px-2.5 py-1 text-[11px] font-semibold text-[#f5a623]">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span>Auto-Action: {uc.simulatedCall.actionTag}</span>
             </div>
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+export const UseCasesSection: React.FC = () => {
+  return (
+    <section id="use-cases" className="relative py-24 bg-[rgba(8,14,23,0.7)]">
+      <div className="max-w-6xl mx-auto px-6 mb-16">
+        <div className="text-center">
+          <AnimeScrollReveal direction="up" distance={30} duration={800}>
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full border border-[rgba(20,200,178,0.3)] bg-[rgba(20,200,178,0.1)] text-xs font-semibold text-[#14c8b2] mb-4">
+              <Workflow className="w-3.5 h-3.5" /> Use-Case Driven Architecture
+            </span>
+            <AnimeSplitText as="h2" by="lines" className="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight mb-4">
+              Designed for Every Critical Touchpoint
+            </AnimeSplitText>
+            <p className="text-[#94a3b8] max-w-xl mx-auto text-base">
+              From initial discovery to post-consultation follow-up, explore how Swastik AI elevates the patient experience.
+            </p>
+          </AnimeScrollReveal>
+        </div>
+      </div>
+
+      <AnimeHorizontalScroll topOffset="96px">
+        {USE_CASES.map((uc) => (
+          <UseCaseCard key={uc.id} uc={uc} />
+        ))}
+      </AnimeHorizontalScroll>
     </section>
   )
 }
 
 export default UseCasesSection
+

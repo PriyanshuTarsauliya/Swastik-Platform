@@ -24,6 +24,8 @@ export default defineConfig({
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'three-vendor': ['three'],
+          'anime-vendor': ['animejs'],
           'ui-vendor': ['lucide-react', 'lenis'],
         },
       },

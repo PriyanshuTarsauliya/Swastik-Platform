@@ -18,6 +18,7 @@ import {
   Activity,
   FileText,
   CheckCircle,
+  Download,
   Zap,
   Play,
   Pause,
@@ -27,8 +28,10 @@ import {
   Share2,
   LogOut,
   LogIn,
+  Code
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import CallMonitor from '../components/CallMonitor'
 
 interface Appointment {
   id: number
@@ -55,6 +58,7 @@ interface CallLog {
   chief_complaint?: string
   urgency_level?: 'Routine' | 'Urgent' | 'Emergency' | string
   action_items?: string
+  outcome?: string
   audio_url?: string
   created_at: string
 }
@@ -87,7 +91,7 @@ interface Stats {
 
 export default function AdminDashboard() {
   const { user, signout } = useAuth()
-  const [activeTab, setActiveTab] = useState<'appointments' | 'calls' | 'webhooks' | 'orders' | 'whatsapp' | 'knowledge' | 'redflags'>('appointments')
+  const [activeTab, setActiveTab] = useState<'appointments' | 'calls' | 'webhooks' | 'orders' | 'whatsapp' | 'knowledge' | 'redflags' | 'integration' | 'profile' | 'channels' | 'monitor'>('appointments')
   const [stats, setStats] = useState<Stats>({
     total_appointments: 0,
     today_appointments: 0,
@@ -100,6 +104,8 @@ export default function AdminDashboard() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [callLogs, setCallLogs] = useState<CallLog[]>([])
   const [orders, setOrders] = useState<Order[]>([])
+  const [_profileData, setProfileData] = useState<any>(null)
+  const [channelsData, setChannelsData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   // Filters
@@ -150,25 +156,41 @@ export default function AdminDashboard() {
     message: string
   } | null>(null)
 
+  // Clinic Profile Editor State
+  const [profileForm, setProfileForm] = useState({
+    doctor_name: '',
+    greeting: '',
+    consultation_fee: '₹499',
+    address: '',
+    working_hours: 'Mon - Sat (10:00 AM - 8:30 PM)',
+  })
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [profileSaveStatus, setProfileSaveStatus] = useState<string | null>(null)
+  const [copiedChannel, setCopiedChannel] = useState<string | null>(null)
+
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [statsRes, apptsRes, callsRes, ordersRes, webhookRes, redFlagsRes] = await Promise.all([
+      const [statsRes, apptsRes, callsRes, ordersRes, webhookRes, redFlagsRes, profileRes, channelsRes] = await Promise.all([
         fetch('/api/admin/stats'),
         fetch('/api/admin/appointments'),
         fetch('/api/admin/call-logs'),
         fetch('/api/admin/orders'),
         fetch('/api/admin/settings/webhook'),
         fetch('/api/admin/red-flags'),
+        fetch('/api/admin/clinic-profile'),
+        fetch('/api/admin/channels'),
       ])
 
-      const [statsData, apptsData, callsData, ordersData, webhookData, redFlagsData] = await Promise.all([
+      const [statsData, apptsData, callsData, ordersData, webhookData, redFlagsData, profile, channels] = await Promise.all([
         statsRes.json(),
         apptsRes.json(),
         callsRes.json(),
         ordersRes.json(),
         webhookRes.json().catch(() => ({ webhook_url: '' })),
         redFlagsRes.json().catch(() => ({ phrases: [] })),
+        profileRes.json().catch(() => ({ profile: null })),
+        channelsRes.json().catch(() => ({ channels: [] })),
       ])
 
       if (statsData) setStats(statsData)
@@ -182,6 +204,17 @@ export default function AdminDashboard() {
       if (ordersData?.orders) setOrders(ordersData.orders)
       if (webhookData?.webhook_url) setWebhookUrl(webhookData.webhook_url)
       if (redFlagsData?.phrases) setRedFlags(redFlagsData.phrases)
+      if (profile?.profile) {
+        setProfileData(profile.profile)
+        setProfileForm({
+          doctor_name: profile.profile.doctor_name || '',
+          greeting: profile.profile.greeting || '',
+          consultation_fee: profile.profile.consultation_fee || '₹499',
+          address: profile.profile.address || '',
+          working_hours: profile.profile.working_hours || 'Mon - Sat (10:00 AM - 8:30 PM)',
+        })
+      }
+      if (channels) setChannelsData(channels)
     } catch (err) {
       console.error('Error loading admin data:', err)
     } finally {
@@ -332,6 +365,35 @@ export default function AdminDashboard() {
     } finally {
       setTestingPhrase(false)
     }
+  }
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSavingProfile(true)
+    setProfileSaveStatus(null)
+    try {
+      const res = await fetch('/api/admin/clinic-profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileForm),
+      })
+      if (res.ok) {
+        setProfileSaveStatus('✓ Clinic profile saved & synced with live AI Voice receptionist')
+        setTimeout(() => setProfileSaveStatus(null), 4000)
+      } else {
+        setProfileSaveStatus('Failed to update clinic profile')
+      }
+    } catch {
+      setProfileSaveStatus('Connection error saving profile')
+    } finally {
+      setSavingProfile(false)
+    }
+  }
+
+  const handleCopyChannel = (text: string, key: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedChannel(key)
+    setTimeout(() => setCopiedChannel(null), 2000)
   }
 
   const toggleAudioPlayback = () => {
@@ -586,6 +648,18 @@ export default function AdminDashboard() {
           </button>
 
           <button
+            onClick={() => setActiveTab('monitor')}
+            className={`pb-3 px-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'monitor'
+                ? 'border-[#14C8B2] text-[#14C8B2]'
+                : 'border-transparent text-[#94A3B8] hover:text-white'
+            }`}
+          >
+            <Headphones className="w-3.5 h-3.5" />
+            <span>Live Monitor</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('webhooks')}
             className={`pb-3 px-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'webhooks'
@@ -641,9 +715,48 @@ export default function AdminDashboard() {
             <Shield className="w-3.5 h-3.5 text-rose-400" />
             <span>Safety & Red-Flags ({redFlags.length})</span>
           </button>
+          
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`pb-3 px-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'profile'
+                ? 'border-[#14C8B2] text-[#14C8B2]'
+                : 'border-transparent text-[#94A3B8] hover:text-white'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5" />
+            <span>Clinic Profile</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('channels')}
+            className={`pb-3 px-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'channels'
+                ? 'border-[#14C8B2] text-[#14C8B2]'
+                : 'border-transparent text-[#94A3B8] hover:text-white'
+            }`}
+          >
+            <Code className="w-3.5 h-3.5" />
+            <span>Channels & Setup</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('integration')}
+            className={`pb-3 px-4 text-xs font-bold uppercase tracking-wider transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'integration'
+                ? 'border-[#14C8B2] text-[#14C8B2]'
+                : 'border-transparent text-[#94A3B8] hover:text-white'
+            }`}
+          >
+            <Code className="w-3.5 h-3.5 text-[#14C8B2]" />
+            <span>Integration</span>
+          </button>
         </div>
 
         {/* TAB 1: Appointments Table */}
+        {activeTab === 'monitor' && (
+          <CallMonitor token={localStorage.getItem('swastik_token')} />
+        )}
+
         {activeTab === 'appointments' && (
           <div className="rounded-3xl border border-white/[0.08] bg-[rgba(8,14,23,0.85)] p-6 backdrop-blur-xl shadow-2xl">
             {/* Search & Filter Bar */}
@@ -814,6 +927,16 @@ export default function AdminDashboard() {
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="font-bold text-white text-sm">{call.caller_name}</span>
                       <div className="flex items-center gap-2">
+                        {call.outcome && call.outcome !== 'Unclassified' && (
+                          <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                            call.outcome === 'Booked' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                            call.outcome === 'Escalated' ? 'bg-red-500/10 text-red-400 border-red-500/30' :
+                            call.outcome === 'FAQ' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
+                            'bg-gray-500/10 text-gray-400 border-gray-500/30'
+                          }`}>
+                            {call.outcome}
+                          </span>
+                        )}
                         {getUrgencyBadge(call.urgency_level)}
                         <span className="font-mono text-xs text-[#00E5FF] font-semibold">
                           {call.duration_seconds}s
@@ -845,6 +968,16 @@ export default function AdminDashboard() {
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-base font-bold text-white">{selectedCall.caller_name}</h3>
+                          {selectedCall.outcome && selectedCall.outcome !== 'Unclassified' && (
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border ${
+                              selectedCall.outcome === 'Booked' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                              selectedCall.outcome === 'Escalated' ? 'bg-red-500/10 text-red-400 border-red-500/30' :
+                              selectedCall.outcome === 'FAQ' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
+                              'bg-gray-500/10 text-gray-400 border-gray-500/30'
+                            }`}>
+                              {selectedCall.outcome}
+                            </span>
+                          )}
                           {getUrgencyBadge(selectedCall.urgency_level)}
                         </div>
                         <p className="text-xs text-[#94A3B8] mt-0.5">
@@ -1199,6 +1332,7 @@ export default function AdminDashboard() {
                       <th className="py-3 px-4 font-semibold">Amount</th>
                       <th className="py-3 px-4 font-semibold">Payment</th>
                       <th className="py-3 px-4 font-semibold">Status</th>
+                      <th className="py-3 px-4 font-semibold text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.06]">
@@ -1232,6 +1366,20 @@ export default function AdminDashboard() {
                           >
                             {ord.status}
                           </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          {ord.status === 'PAID' && (
+                            <a
+                              href={`/api/checkout/order/${ord.order_id}/invoice`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] text-[#14C8B2] hover:text-[#00E5FF] font-semibold flex items-center justify-end gap-1"
+                              title="Download Tax Invoice"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>Invoice</span>
+                            </a>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1407,6 +1555,43 @@ export default function AdminDashboard() {
         )}
 
         {/* TAB 6: Doctor-Configurable Red-Flag Safety Phrases */}
+        {activeTab === 'integration' && (
+          <div className="space-y-6">
+            <div className="rounded-3xl border border-white/[0.08] bg-[rgba(8,14,23,0.85)] p-8 backdrop-blur-xl shadow-2xl">
+              <h2 className="text-xl font-bold text-white mb-2">Integration Settings</h2>
+              <p className="text-zinc-400 mb-6">Copy these snippets to embed Swastik AI on your website or share a direct link.</p>
+              
+              <div className="space-y-8">
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                    <Code className="w-5 h-5 text-[#14C8B2]" />
+                    Embeddable Widget
+                  </h3>
+                  <p className="text-sm text-zinc-500 mb-3">Add this script to the <code>&lt;head&gt;</code> of your website to display the floating AI receptionist widget.</p>
+                  <div className="relative">
+                    <pre className="bg-black/50 p-4 rounded-xl border border-white/10 text-emerald-400 font-mono text-sm overflow-x-auto">
+{`<script src="${window.location.origin}/widget.js" data-clinic-id="${user?.clinic_id || 'dr-sharma'}"></script>`}
+                    </pre>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+                    <Share2 className="w-5 h-5 text-[#14C8B2]" />
+                    Smart Link
+                  </h3>
+                  <p className="text-sm text-zinc-500 mb-3">Share this direct link with patients so they can talk to the AI without visiting your website.</p>
+                  <div className="relative">
+                    <pre className="bg-black/50 p-4 rounded-xl border border-white/10 text-cyan-400 font-mono text-sm overflow-x-auto">
+{`${window.location.origin}/call/${user?.clinic_id || 'dr-sharma'}`}
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'redflags' && (
           <div className="space-y-6">
             {/* Policy & Safety Disclaimer */}
@@ -1564,6 +1749,278 @@ export default function AdminDashboard() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+        
+        {activeTab === 'profile' && (
+          <div className="p-6 md:p-8 rounded-3xl border border-white/[0.08] bg-[rgba(8,14,23,0.85)] backdrop-blur-xl shadow-2xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-white/[0.08]">
+              <div>
+                <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-[#14C8B2]" />
+                  <span>Clinic Profile & AI Receptionist Persona</span>
+                </h3>
+                <p className="text-xs text-[#94A3B8] mt-1">
+                  Customize the clinic details, consultation fees, and AI greeting used across live patient calls.
+                </p>
+              </div>
+
+              {profileSaveStatus && (
+                <span className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold animate-pulse">
+                  {profileSaveStatus}
+                </span>
+              )}
+            </div>
+
+            <form onSubmit={handleSaveProfile} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* Doctor Name */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-wider block">
+                    Attending Doctor / Clinic Head
+                  </label>
+                  <input
+                    type="text"
+                    value={profileForm.doctor_name}
+                    onChange={(e) => setProfileForm({ ...profileForm, doctor_name: e.target.value })}
+                    placeholder="e.g. Dr. A. K. Sharma"
+                    className="w-full px-4 py-3 rounded-xl bg-[#04070C] border border-white/[0.1] text-xs text-white placeholder:text-[#475569] focus:outline-none focus:border-[#14C8B2]"
+                  />
+                </div>
+
+                {/* Consultation Fee */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-wider block">
+                    Consultation Fee
+                  </label>
+                  <input
+                    type="text"
+                    value={profileForm.consultation_fee}
+                    onChange={(e) => setProfileForm({ ...profileForm, consultation_fee: e.target.value })}
+                    placeholder="e.g. ₹499 (7-day follow-up)"
+                    className="w-full px-4 py-3 rounded-xl bg-[#04070C] border border-white/[0.1] text-xs text-white placeholder:text-[#475569] focus:outline-none focus:border-[#14C8B2]"
+                  />
+                </div>
+
+                {/* Working Hours */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-wider block">
+                    Clinic Timings & Calling Hours
+                  </label>
+                  <input
+                    type="text"
+                    value={profileForm.working_hours}
+                    onChange={(e) => setProfileForm({ ...profileForm, working_hours: e.target.value })}
+                    placeholder="e.g. Mon - Sat (10:00 AM - 1:00 PM, 5:00 PM - 8:30 PM)"
+                    className="w-full px-4 py-3 rounded-xl bg-[#04070C] border border-white/[0.1] text-xs text-white placeholder:text-[#475569] focus:outline-none focus:border-[#14C8B2]"
+                  />
+                </div>
+
+                {/* Address */}
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-wider block">
+                    Clinic Address & Location
+                  </label>
+                  <input
+                    type="text"
+                    value={profileForm.address}
+                    onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
+                    placeholder="e.g. Swaroop Nagar, Kanpur, Uttar Pradesh"
+                    className="w-full px-4 py-3 rounded-xl bg-[#04070C] border border-white/[0.1] text-xs text-white placeholder:text-[#475569] focus:outline-none focus:border-[#14C8B2]"
+                  />
+                </div>
+              </div>
+
+              {/* AI Greeting */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-[#94A3B8] uppercase tracking-wider block">
+                    AI Receptionist Opening Greeting (First Sentence Spoken)
+                  </label>
+                  <span className="text-[11px] text-[#14C8B2] font-mono">Bilingual (Hindi + English)</span>
+                </div>
+                <textarea
+                  rows={3}
+                  value={profileForm.greeting}
+                  onChange={(e) => setProfileForm({ ...profileForm, greeting: e.target.value })}
+                  placeholder="Namaste ji! Dr. Sharma's Clinic se Swastik bol rahi hoon. Kahiye, kaise madad karoon?"
+                  className="w-full p-4 rounded-xl bg-[#04070C] border border-white/[0.1] text-xs text-white placeholder:text-[#475569] focus:outline-none focus:border-[#14C8B2] leading-relaxed"
+                />
+              </div>
+
+              <div className="pt-4 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4">
+                <span className="text-xs text-[#94A3B8]">
+                  Changes are dynamically injected into the Gemini Live system prompt in &lt;100ms.
+                </span>
+
+                <div className="flex items-center gap-3">
+                  <a
+                    href="/voice/dr-sharma"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2.5 rounded-xl border border-white/10 hover:border-white/20 text-xs font-semibold text-[#cbd5e1] hover:text-white transition-all flex items-center gap-1.5"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Test Patient Smart Link</span>
+                  </a>
+
+                  <button
+                    type="submit"
+                    disabled={savingProfile}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#14C8B2] to-[#00E5FF] text-[#04070C] font-bold text-xs shadow-[0_0_20px_rgba(20,200,178,0.35)] hover:brightness-110 active:scale-98 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {savingProfile ? 'Saving...' : 'Save & Deploy Clinic Profile'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {activeTab === 'channels' && (
+          <div className="p-6 md:p-8 rounded-3xl border border-white/[0.08] bg-[rgba(8,14,23,0.85)] backdrop-blur-xl shadow-2xl">
+            <div className="mb-6 pb-6 border-b border-white/[0.08]">
+              <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                <Code className="w-5 h-5 text-[#14C8B2]" />
+                <span>Multi-Tenant Access Channels & Integrations</span>
+              </h3>
+              <p className="text-xs text-[#94A3B8] mt-1">
+                Patients can access your AI receptionist through your website, a direct smart link, or dedicated phone lines.
+              </p>
+            </div>
+            
+            {channelsData ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* 1. Website Widget Box */}
+                <div className="p-6 rounded-2xl border border-white/[0.08] bg-[#04070C] flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Code className="w-4 h-4 text-[#14c8b2]" /> Website Voice Widget
+                      </h4>
+                      <span className="px-2.5 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold rounded-full">
+                        Ready to Embed
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#94A3B8] mb-4 leading-relaxed">
+                      Embed the floating voice receptionist on your clinic or hospital website. Add this single tag before the closing <code className="text-[#14C8B2]">&lt;/body&gt;</code> tag:
+                    </p>
+                    
+                    <div className="relative group mb-4">
+                      <pre className="p-3.5 rounded-xl bg-black/60 border border-white/[0.08] text-[11px] text-zinc-300 font-mono overflow-x-auto">
+                        {channelsData.widget_embed_code}
+                      </pre>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-3 border-t border-white/[0.06]">
+                    <button
+                      onClick={() => handleCopyChannel(channelsData.widget_embed_code, 'widget')}
+                      className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      {copiedChannel === 'widget' ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400">Copied Embed Code!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-[#14c8b2]" />
+                          <span>Copy Embed Tag</span>
+                        </>
+                      )}
+                    </button>
+
+                    <a
+                      href="/call/dr-sharma"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-[#94a3b8] hover:text-white transition-all"
+                      title="Preview widget container"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+                </div>
+
+                {/* 2. Patient Smart Link Box */}
+                <div className="p-6 rounded-2xl border border-white/[0.08] bg-[#04070C] flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <ExternalLink className="w-4 h-4 text-[#00E5FF]" /> Patient Smart Link
+                      </h4>
+                      <span className="px-2.5 py-0.5 bg-cyan-500/15 border border-cyan-500/30 text-cyan-400 text-[11px] font-bold rounded-full">
+                        Mobile-Ready
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#94A3B8] mb-4 leading-relaxed">
+                      Share with patients over WhatsApp, SMS appointment reminders, or print as a QR code at your clinic reception desk:
+                    </p>
+
+                    <div className="p-3 rounded-xl bg-black/60 border border-white/[0.08] text-xs font-mono text-white mb-4 flex items-center justify-between overflow-hidden">
+                      <span className="truncate pr-2">{`https://voice.swastik.ai${channelsData.smart_link_url}`}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-3 border-t border-white/[0.06]">
+                    <button
+                      onClick={() => handleCopyChannel(`https://voice.swastik.ai${channelsData.smart_link_url}`, 'link')}
+                      className="flex-1 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      {copiedChannel === 'link' ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400">Copied Link!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-[#00E5FF]" />
+                          <span>Copy Smart Link</span>
+                        </>
+                      )}
+                    </button>
+
+                    <a
+                      href={channelsData.smart_link_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-xl bg-[#14c8b2] text-[#04070c] hover:bg-[#2dd4bf] text-xs font-bold flex items-center gap-1.5 transition-all"
+                    >
+                      <span>Open Link</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                </div>
+
+                {/* 3. PSTN Real Phone Number Box */}
+                <div className="p-6 rounded-2xl border border-white/[0.08] bg-[#04070C] flex flex-col justify-between md:col-span-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <Phone className="w-4 h-4 text-[#F5A623]" />
+                        <h4 className="text-sm font-bold text-white">Direct Phone Number (PSTN / Twilio Bridge)</h4>
+                        <span className="px-2.5 py-0.5 bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[11px] font-bold rounded-full">
+                          Enterprise Ready
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#94A3B8] max-w-2xl leading-relaxed">
+                        Receive incoming regular phone calls from landlines and mobile networks with zero patient internet required. Incoming calls transcode mu-law 8kHz audio into 16kHz PCM for real-time Gemini Live response.
+                      </p>
+                    </div>
+
+                    <a
+                      href="/checkout"
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold text-xs shadow-[0_0_20px_rgba(245,166,35,0.3)] hover:brightness-110 transition-all text-center shrink-0"
+                    >
+                      Provision +91 Dedicated Number
+                    </a>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-white text-xs py-8 text-center">Loading channels data...</div>
+            )}
           </div>
         )}
       </main>
