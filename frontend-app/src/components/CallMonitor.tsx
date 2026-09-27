@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { Headphones, Mic, Volume2, X, Circle, ShieldAlert, PhoneCall } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Headphones, Mic, Volume2, X, Circle, PhoneCall } from 'lucide-react'
 
 interface CallMonitorProps {
   token?: string | null
@@ -12,7 +12,6 @@ export default function CallMonitor({ token }: CallMonitorProps) {
   
   const wsRef = useRef<WebSocket | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
-  const workletNodeRef = useRef<AudioWorkletNode | null>(null)
   
   // Polling for active calls
   useEffect(() => {
