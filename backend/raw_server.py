@@ -74,7 +74,17 @@ log = logging.getLogger("swastik-agent")
 MODEL = os.getenv("LIVE_MODEL", "gemini-3.1-flash-live-preview")
 VOICE = os.getenv("LIVE_VOICE", "Aoede")
 
-client = genai.Client()  # reads GOOGLE_API_KEY + GOOGLE_GENAI_USE_VERTEXAI=FALSE from .env
+def get_genai_client():
+    global client
+    if client is None:
+        client = genai.Client()
+    return client
+
+try:
+    client = genai.Client()  # reads GOOGLE_API_KEY + GOOGLE_GENAI_USE_VERTEXAI=FALSE from .env
+except Exception as e:
+    log.warning("genai.Client() initialization deferred: %s", e)
+    client = None
 
 LIVE_CONFIG = {
     "response_modalities": ["AUDIO"],
@@ -1291,7 +1301,8 @@ async def _run_voice_session(websocket: WebSocket, clinic: dict, channel_type: s
     telemetry_stats = {"snr_sum": 0.0, "erle_sum": 0.0, "count": 0}
 
     try:
-        async with client.aio.live.connect(model=MODEL, config=live_config) as session:
+        ai_client = get_genai_client()
+        async with ai_client.aio.live.connect(model=MODEL, config=live_config) as session:
             log.info("Live session open for Swastik AI (session_id=%s)", session_id)
 
             async def upstream():
@@ -1531,7 +1542,8 @@ Set verified=true ONLY if:
 """
 
     try:
-        response = client.models.generate_content(
+        ai_client = get_genai_client()
+        response = ai_client.models.generate_content(
             model="gemini-2.5-flash",
             contents=[
                 types.Part.from_bytes(data=contents, mime_type=mime),
